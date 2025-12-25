@@ -531,17 +531,10 @@ Customer Info:
     def _find_or_create_conversation(self, sender_id, recipient_id):
         """
         Tìm hoặc tạo conversation.
-        
-        Args:
-            sender_id (str): Facebook user PSID
-            recipient_id (str): Facebook page ID
-        
-        Returns:
-            social.message: Conversation record
         """
-        # Find account by Facebook page ID
+        # ✅ SỬA: Đổi 'facebook_id' → 'facebook_page_id'
         account = request.env['social.account'].sudo().search([
-            ('facebook_id', '=', recipient_id)
+            ('facebook_page_id', '=', recipient_id)  # ← DÒNG NÀY
         ], limit=1)
         
         if not account:
