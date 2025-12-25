@@ -149,3 +149,68 @@ class SocialChatbotAutomation(models.Model):
         keywords = [kw.strip().lower() for kw in self.trigger_keywords.split(',')]
         
         return any(keyword in message_lower for keyword in keywords if keyword)
+    
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ACTION METHODS
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    def action_test_rule(self):
+        """
+        Test chatbot rule với tin nhắn mẫu.
+        
+        Hiển thị popup với:
+        - Trigger keywords
+        - Response text
+        - Test message input
+        """
+        self.ensure_one()
+        
+        # Build test message
+        test_message = f"""
+🤖 **Test Chatbot Rule: {self.name}**
+
+📌 **Trigger Keywords:**
+{self.trigger_keywords}
+
+💬 **Response Text:**
+{self.response_text}
+
+✅ **Status:** {'Active' if self.active else 'Inactive'}
+🎯 **Priority:** {self.priority}
+📊 **Triggered:** {self.triggered_count} times
+
+---
+**Test với tin nhắn mẫu:**
+Gửi tin nhắn chứa bất kỳ keyword nào ở trên để test rule này.
+        """
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Test Chatbot Rule'),
+                'message': test_message,
+                'type': 'info',
+                'sticky': True,
+            }
+        }
+    
+    def action_view_triggered_messages(self):
+        """
+        Xem các tin nhắn đã trigger rule này.
+        
+        Note: Hiện tại chưa track messages chi tiết,
+        chỉ hiển thị thông báo số lượng.
+        """
+        self.ensure_one()
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Triggered Messages'),
+                'message': _('This rule has been triggered %d times.') % self.triggered_count,
+                'type': 'info',
+                'sticky': False,
+            }
+        }
