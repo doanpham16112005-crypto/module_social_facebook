@@ -46,7 +46,7 @@ Technical Requirements:
         'product',          # NEW - Product catalog
     ],
     'data': [
-    # Security
+        # Security
         'security/social_security.xml',
         'security/ir.model.access.csv',
         
@@ -55,10 +55,9 @@ Technical Requirements:
         'data/ir_cron_data.xml',
         'data/mail_template_data.xml',
         'data/facebook_post_template_data.xml',
-        'data/chatbot_data.xml',  # ← ĐẢM BẢO DÒNG NÀY CÓ Ở CUỐI PHẦN DATA
+        'data/chatbot_data.xml',
         
-        # Views
-        'views/menu_views.xml',
+        # Views - ⚠️ ACTIONS TRƯỚC, MENU SAU
         'views/dashboard_views.xml',
         'views/social_account_views.xml',
         'views/social_post_views.xml',
@@ -70,6 +69,8 @@ Technical Requirements:
         'views/social_message_views.xml',
         'views/social_messenger_product_views.xml',
         'views/social_messenger_order_views.xml',
+        'views/social_chatbot_automation_views.xml',
+        'views/menu_views.xml',  # ← MENU PHẢI Ở CUỐI
         
         # Wizards
         'wizard/wizard_views.xml',
