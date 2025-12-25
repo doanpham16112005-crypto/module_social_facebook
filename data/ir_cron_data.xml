@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- CRON JOBS - Facebook Synchronization -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+    <!-- Cron: Sync Facebook Posts -->
+    <record id="cron_sync_facebook_posts" model="ir.cron">
+        <field name="name">Facebook: Sync Posts</field>
+        <field name="model_id" ref="model_social_post"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_sync_posts()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="active">True</field>
+    </record>
+
+    <!-- Cron: Sync Facebook Comments -->
+    <record id="cron_sync_facebook_comments" model="ir.cron">
+        <field name="name">Facebook: Sync Comments</field>
+        <field name="model_id" ref="model_social_comment"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_sync_comments()</field>
+        <field name="interval_number">10</field>
+        <field name="interval_type">minutes</field>
+        <field name="active">True</field>
+    </record>
+
+    <!-- Cron: Publish Scheduled Posts -->
+    <record id="cron_publish_scheduled_posts" model="ir.cron">
+        <field name="name">Facebook: Publish Scheduled Posts</field>
+        <field name="model_id" ref="model_social_post"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_publish_scheduled_posts()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active">True</field>
+    </record>
+
+    <!-- 
+    NOTE: Ngrok health check đã bị XÓA
+    Lý do: Odoo 19 cấm opcode IMPORT_NAME trong cron code
+    Nếu cần kiểm tra ngrok, dùng external monitoring tool
+    -->
+
+</odoo>

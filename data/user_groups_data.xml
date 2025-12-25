@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Thêm Admin vào groups Social Facebook -->
+    <!-- ✅ SỬA: Đổi tên group reference cho khớp -->
+    <record id="base.user_admin" model="res.users">
+        <field name="group_ids" eval="[(4, ref('module_social_facebook.group_social_facebook_manager'))]"/>
+    </record>
+
+</odoo>

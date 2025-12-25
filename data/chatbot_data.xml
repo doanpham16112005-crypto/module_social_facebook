@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- Purchase Intent Rule - Vietnamese -->
+        <record id="chatbot_rule_purchase_intent_vietnamese" model="social.chatbot.automation">
+            <field name="name">Mua hàng - Tiếng Việt</field>
+            <field name="trigger_keywords">mua,đặt hàng,muốn mua,đặt mua</field>
+            <field name="response_text">Cảm ơn bạn đã quan tâm đến sản phẩm của chúng tôi! 🎉
+
+Tôi đã ghi nhận nhu cầu mua hàng của bạn và đội ngũ tư vấn sẽ liên hệ với bạn trong thời gian sớm nhất.
+
+Để được hỗ trợ nhanh hơn, bạn vui lòng cho tôi biết:
+- Sản phẩm bạn quan tâm
+- Số lượng cần mua
+- Thời gian dự kiến nhận hàng
+
+Xin cảm ơn! 🙏</field>
+            <field name="priority">100</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Purchase Intent Rule - English -->
+        <record id="chatbot_rule_purchase_intent_english" model="social.chatbot.automation">
+            <field name="name">Purchase - English</field>
+            <field name="trigger_keywords">buy,order,purchase,want to buy</field>
+            <field name="response_text">Thank you for your interest in our products! 🎉
+
+I've noted your purchase request and our sales team will contact you as soon as possible.
+
+For faster assistance, please provide:
+- Product(s) you're interested in
+- Quantity needed
+- Expected delivery time
+
+Thank you! 🙏</field>
+            <field name="priority">100</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Greeting Rule -->
+        <record id="chatbot_rule_greeting" model="social.chatbot.automation">
+            <field name="name">Chào hỏi</field>
+            <field name="trigger_keywords">xin chào,chào,hello,hi,hey</field>
+            <field name="response_text">Xin chào! 👋 Cảm ơn bạn đã nhắn tin cho chúng tôi.
+
+Tôi có thể giúp gì cho bạn hôm nay?</field>
+            <field name="priority">50</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Pricing Rule -->
+        <record id="chatbot_rule_pricing" model="social.chatbot.automation">
+            <field name="name">Hỏi giá</field>
+            <field name="trigger_keywords">giá,bao nhiêu,price,cost,how much</field>
+            <field name="response_text">Để tư vấn giá chính xác nhất, bạn vui lòng cho tôi biết:
+- Sản phẩm bạn quan tâm
+- Số lượng cần mua
+
+Đội ngũ của chúng tôi sẽ báo giá chi tiết trong thời gian sớm nhất! 💰</field>
+            <field name="priority">70</field>
+            <field name="active" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

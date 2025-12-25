@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="social_comment_view_tree" model="ir.ui.view">
+        <field name="name">social.comment.list</field>
+        <field name="model">social.comment</field>
+        <field name="arch" type="xml">
+            <list string="Facebook Comments" 
+                  decoration-muted="is_hidden"
+                  decoration-danger="is_spam"
+                  decoration-success="replied">
+                <field name="comment_date"/>
+                <field name="post_id"/>
+                <field name="author_name"/>
+                <field name="message"/>
+                <field name="replied"/>
+                <field name="is_hidden" optional="hide"/>
+                <field name="is_spam" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="social_comment_view_form" model="ir.ui.view">
+        <field name="name">social.comment.form</field>
+        <field name="model">social.comment</field>
+        <field name="arch" type="xml">
+            <form string="Facebook Comment">
+                <header>
+                    <button name="action_reply" type="object" string="Reply" class="btn-primary" invisible="replied"/>
+                    <button name="action_hide" type="object" string="Hide" class="btn-secondary" invisible="is_hidden"/>
+                    <button name="action_mark_spam" type="object" string="Mark Spam" class="btn-danger" invisible="is_spam"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Comment Info">
+                            <field name="post_id"/>
+                            <field name="comment_date"/>
+                            <field name="facebook_comment_id"/>
+                        </group>
+                        <group string="Author">
+                            <field name="author_name"/>
+                            <field name="author_facebook_id"/>
+                        </group>
+                    </group>
+                    <group string="Message">
+                        <field name="message" nolabel="1" readonly="1"/>
+                    </group>
+                    <group string="Reply" invisible="replied">
+                        <field name="reply_text" nolabel="1"/>
+                    </group>
+                    <group string="Status">
+                        <field name="replied"/>
+                        <field name="is_hidden"/>
+                        <field name="is_spam"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_social_comment" model="ir.actions.act_window">
+        <field name="name">Facebook Comments</field>
+        <field name="res_model">social.comment</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No comments yet!</p>
+        </field>
+    </record>
+
+</odoo>

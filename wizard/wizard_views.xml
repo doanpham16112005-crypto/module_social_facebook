@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="post_composer_wizard_view_form" model="ir.ui.view">
+        <field name="name">social.post.composer.wizard.form</field>
+        <field name="model">social.post.composer.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Quick Post Composer">
+                <sheet>
+                    <group>
+                        <group string="Select Pages">
+                            <field name="account_ids" widget="many2many_tags"/>
+                        </group>
+                        <group string="Options">
+                            <field name="template_id"/>
+                            <field name="post_method" widget="radio"/>
+                        </group>
+                    </group>
+                    <group string="Content">
+                        <field name="content" nolabel="1"/>
+                    </group>
+                    <group>
+                        <group string="Media">
+                            <field name="media_type" widget="radio"/>
+                            <field name="image" widget="image" invisible="media_type != 'photo'"/>
+                            <field name="link_url" invisible="media_type != 'link'"/>
+                        </group>
+                        <group string="Scheduling" invisible="post_method != 'scheduled'">
+                            <field name="scheduled_date"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_publish" type="object" string="Publish/Schedule" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_post_composer_wizard" model="ir.actions.act_window">
+        <field name="name">Create Post</field>
+        <field name="res_model">social.post.composer.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <record id="bulk_schedule_wizard_view_form" model="ir.ui.view">
+        <field name="name">social.bulk.schedule.wizard.form</field>
+        <field name="model">social.bulk.schedule.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Bulk Post Scheduler">
+                <sheet>
+                    <group>
+                        <group string="Select Pages">
+                            <field name="account_ids" widget="many2many_tags"/>
+                        </group>
+                        <group string="Select Templates">
+                            <field name="post_template_ids" widget="many2many_tags"/>
+                            <field name="content_rotation" widget="radio"/>
+                        </group>
+                    </group>
+                    <group string="Schedule Type">
+                        <field name="schedule_type" widget="radio"/>
+                    </group>
+                    <group invisible="schedule_type != 'specific'">
+                        <group string="Date Range">
+                            <field name="start_date"/>
+                            <field name="end_date"/>
+                        </group>
+                        <group string="Time Slots">
+                            <field name="time_slots" nolabel="1"/>
+                        </group>
+                    </group>
+                    <group invisible="schedule_type != 'recurring'">
+                        <group string="Frequency">
+                            <field name="frequency" widget="radio"/>
+                            <field name="interval"/>
+                            <field name="duration_days"/>
+                            <field name="day_of_month" invisible="frequency != 'monthly'"/>
+                        </group>
+                        <group string="Posting Times">
+                            <field name="posting_times" nolabel="1"/>
+                        </group>
+                    </group>
+                    <group string="Weekdays" invisible="schedule_type != 'recurring' or frequency != 'weekly'">
+                        <group>
+                            <field name="weekday_monday"/>
+                            <field name="weekday_tuesday"/>
+                            <field name="weekday_wednesday"/>
+                            <field name="weekday_thursday"/>
+                        </group>
+                        <group>
+                            <field name="weekday_friday"/>
+                            <field name="weekday_saturday"/>
+                            <field name="weekday_sunday"/>
+                        </group>
+                    </group>
+                    <group string="Preview">
+                        <field name="preview_count" readonly="1"/>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_schedule_posts" type="object" string="Schedule All Posts" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_bulk_schedule_wizard" model="ir.actions.act_window">
+        <field name="name">Bulk Schedule Posts</field>
+        <field name="res_model">social.bulk.schedule.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

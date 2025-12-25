@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ===================================================================== -->
+    <!-- MESSENGER PRODUCT - LIST VIEW                                         -->
+    <!-- ===================================================================== -->
+    <record id="social_messenger_product_view_tree" model="ir.ui.view">
+        <field name="name">social.messenger.product.list</field>
+        <field name="model">social.messenger.product</field>
+        <field name="arch" type="xml">
+            <list string="Messenger Products" 
+                  decoration-muted="active == False"
+                  editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="product_id"/>
+                <field name="quick_reply_title"/>
+                <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="active" widget="boolean_toggle"/>
+                <field name="order_count"/>
+                <field name="company_id" groups="base.group_multi_company" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSENGER PRODUCT - FORM VIEW                                         -->
+    <!-- ===================================================================== -->
+    <record id="social_messenger_product_view_form" model="ir.ui.view">
+        <field name="name">social.messenger.product.form</field>
+        <field name="model">social.messenger.product</field>
+        <field name="arch" type="xml">
+            <form string="Messenger Product">
+                <header>
+                    <button name="action_toggle_active" type="object" 
+                            string="Enable" class="btn-primary"
+                            invisible="active == True"/>
+                    <button name="action_toggle_active" type="object" 
+                            string="Disable" class="btn-secondary"
+                            invisible="active == False"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_orders" type="object" 
+                                class="oe_stat_button" icon="fa-shopping-cart"
+                                invisible="order_count == 0">
+                            <field name="order_count" widget="statinfo" 
+                                   string="Orders"/>
+                        </button>
+                    </div>
+                    
+                    <field name="image_url" widget="image" class="oe_avatar"/>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="product_id" 
+                                   placeholder="Select Product..."
+                                   options="{'no_create': True}"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group string="Product Info">
+                            <field name="display_name" invisible="1"/>
+                            <field name="quick_reply_title" 
+                                   placeholder="Max 20 characters"/>
+                            <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            <field name="currency_id" column_invisible="1"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group string="Organization">
+                            <field name="company_id" 
+                                   groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Messenger Description">
+                        <field name="description" nolabel="1" 
+                               placeholder="Description sent to customers..."/>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Preview" name="preview">
+                            <group>
+                                <group string="How it appears in Messenger">
+                                    <div class="alert alert-info" role="alert">
+                                        <h4>Quick Reply Button:</h4>
+                                        <p>
+                                            <strong>
+                                                <field name="quick_reply_title" readonly="1"/>
+                                            </strong>
+                                        </p>
+                                        
+                                        <h4>Product Message:</h4>
+                                        <p>
+                                            🛍️ <field name="product_id" readonly="1"/><br/>
+                                            💰 Giá: <field name="price" readonly="1"/> 
+                                            <field name="currency_id" readonly="1"/><br/>
+                                            📝 <field name="description" readonly="1"/>
+                                        </p>
+                                    </div>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSENGER PRODUCT - KANBAN VIEW                                       -->
+    <!-- ===================================================================== -->
+    <record id="social_messenger_product_view_kanban" model="ir.ui.view">
+        <field name="name">social.messenger.product.kanban</field>
+        <field name="model">social.messenger.product</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile">
+                <field name="product_id"/>
+                <field name="quick_reply_title"/>
+                <field name="price"/>
+                <field name="currency_id"/>
+                <field name="active"/>
+                <field name="order_count"/>
+                
+                <templates>
+                    <t t-name="card" t-translation="off">
+                        <div class="oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="product_id"/>
+                                    </strong>
+                                </div>
+                                <span class="badge rounded-pill" 
+                                      t-att-class="record.active.raw_value ? 'text-bg-success' : 'text-bg-secondary'">
+                                    <t t-if="record.active.raw_value">Active</t>
+                                    <t t-else="">Inactive</t>
+                                </span>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <field name="quick_reply_title"/>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left">
+                                    <field name="price" widget="monetary"/>
+                                </div>
+                                <div class="oe_kanban_bottom_right">
+                                    <i class="fa fa-shopping-cart"/> 
+                                    <field name="order_count"/> orders
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSENGER PRODUCT - SEARCH VIEW                                       -->
+    <!-- ===================================================================== -->
+    <record id="social_messenger_product_view_search" model="ir.ui.view">
+        <field name="name">social.messenger.product.search</field>
+        <field name="model">social.messenger.product</field>
+        <field name="arch" type="xml">
+            <search string="Search Products">
+                <field name="product_id"/>
+                <field name="quick_reply_title"/>
+                
+                <filter string="Active" name="filter_active" 
+                        domain="[('active', '=', True)]"/>
+                <filter string="Inactive" name="filter_inactive" 
+                        domain="[('active', '=', False)]"/>
+                <separator/>
+                
+                <!-- XÓA FILTER "Has Orders" VÌ order_count LÀ COMPUTED FIELD -->
+                
+                <filter string="Group By Product" name="group_product" 
+                        context="{'group_by': 'product_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSENGER PRODUCT - ACTION                                            -->
+    <!-- ===================================================================== -->
+    <record id="action_social_messenger_product" model="ir.actions.act_window">
+        <field name="name">Messenger Products</field>
+        <field name="res_model">social.messenger.product</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="search_view_id" ref="social_messenger_product_view_search"/>
+        <field name="context">{'search_default_filter_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No products configured for Messenger!
+            </p>
+            <p>
+                Add products to sell via Facebook Messenger chatbot.
+            </p>
+            <p>
+                <strong>Only active products will appear in the chatbot.</strong>
+            </p>
+        </field>
+    </record>
+
+</odoo>

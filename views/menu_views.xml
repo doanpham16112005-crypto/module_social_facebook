@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ===================================================================== -->
+    <!-- ROOT MENU                                                             -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_marketing_root"
+              name="Social"
+              web_icon="module_social_facebook,static/description/icon.png"
+              sequence="100"/>
+
+    <!-- ===================================================================== -->
+    <!-- DASHBOARD                                                             -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_dashboard"
+              name="Dashboard"
+              parent="menu_social_marketing_root"
+              action="action_social_dashboard"
+              sequence="1"/>
+
+    <!-- ===================================================================== -->
+    <!-- FACEBOOK PAGES                                                        -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_accounts"
+              name="Facebook Pages"
+              parent="menu_social_marketing_root"
+              action="action_social_account"
+              sequence="10"/>
+
+    <!-- ===================================================================== -->
+    <!-- POSTS                                                                 -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_posts"
+              name="Posts"
+              parent="menu_social_marketing_root"
+              sequence="20"/>
+
+    <menuitem id="menu_social_all_posts"
+              name="All Posts"
+              parent="menu_social_posts"
+              action="action_social_post"
+              sequence="10"/>
+
+    <menuitem id="menu_social_post_calendar"
+              name="Content Calendar"
+              parent="menu_social_posts"
+              action="action_social_post_calendar"
+              sequence="15"/>
+
+    <!-- ===================================================================== -->
+    <!-- TEMPLATES                                                             -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_templates"
+              name="Templates"
+              parent="menu_social_marketing_root"
+              action="action_social_post_template"
+              sequence="30"/>
+
+    <!-- ===================================================================== -->
+    <!-- COMMENTS                                                              -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_comments"
+              name="Comments"
+              parent="menu_social_marketing_root"
+              action="action_social_comment"
+              sequence="40"/>
+
+    <!-- ===================================================================== -->
+    <!-- CONVERSATIONS - SỬA ACTION TỪ social.message → social.conversation -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_conversations"
+              name="Messenger Conversations"
+              parent="menu_social_marketing_root"
+              action="action_social_conversation"
+              sequence="50"/>
+
+    <!-- ===================================================================== -->
+    <!-- MESSENGER SALES                                                       -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_messenger_sales"
+              name="Messenger Sales"
+              parent="menu_social_marketing_root"
+              sequence="60"/>
+
+    <menuitem id="menu_messenger_products"
+              name="Products"
+              parent="menu_messenger_sales"
+              action="action_social_messenger_product"
+              sequence="10"/>
+
+    <menuitem id="menu_messenger_orders"
+              name="Orders"
+              parent="menu_messenger_sales"
+              action="action_social_messenger_order"
+              sequence="20"/>
+
+    <!-- ===================================================================== -->
+    <!-- ANALYTICS                                                             -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_analytics"
+              name="Analytics"
+              parent="menu_social_marketing_root"
+              action="action_social_analytics"
+              sequence="70"/>
+
+    <!-- ===================================================================== -->
+    <!-- CONFIGURATION                                                         -->
+    <!-- ===================================================================== -->
+    <menuitem id="menu_social_configuration"
+              name="Configuration"
+              parent="menu_social_marketing_root"
+              sequence="100"/>
+
+</odoo>

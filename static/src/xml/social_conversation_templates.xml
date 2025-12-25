@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!-- Template for Sync button in list view toolbar -->
+    <t t-name="module_social_facebook.SocialConversationListView.Buttons" t-inherit="web.ListView.Buttons">
+        <xpath expr="//div[hasclass('o_list_buttons')]" position="inside">
+            <button type="button" 
+                    class="btn btn-primary o_sync_conversations_button ms-2"
+                    t-on-click="() => this.onClickSyncConversations()">
+                <i class="fa fa-refresh me-1"/>
+                Sync Conversations
+            </button>
+        </xpath>
+    </t>
+
+    <!-- Alternative: Full button template -->
+    <t t-name="module_social_facebook.SocialConversationListView">
+        <t t-call="web.ListView"/>
+    </t>
+
+</templates>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- TEMPLATE BÀI ĐĂNG MẪU -->
+
+        <record id="template_new_product_launch" model="social.post.template">
+            <field name="name">🚀 Ra Mắt Sản Phẩm Mới</field>
+            <field name="template_type">product_launch</field>
+            <field name="content"><![CDATA[🎉 EXCITING NEWS! 🎉
+
+We're thrilled to announce our latest product: {{product_name}}!
+
+✨ Key Features:
+{{feature_list}}
+
+💰 Special Launch Price: {{price}}
+🎁 Limited time offer: {{offer_details}}
+
+👉 Shop now: {{shop_link}}
+
+#NewProduct #Launch #{{company_name}}]]></field>
+        </record>
+
+        <record id="template_flash_sale" model="social.post.template">
+            <field name="name">⚡ Flash Sale</field>
+            <field name="template_type">promotion</field>
+            <field name="content"><![CDATA[⚡ FLASH SALE ALERT! ⚡
+
+🔥 {{discount_percentage}}% OFF on {{product_category}}!
+
+⏰ Hurry! Only {{hours_left}} hours left!
+🛒 Shop now: {{shop_link}}
+
+Don't miss out on this amazing deal! 🎯
+
+#FlashSale #Discount #LimitedOffer #{{company_name}}]]></field>
+        </record>
+
+        <record id="template_customer_testimonial" model="social.post.template">
+            <field name="name">💬 Đánh Giá Khách Hàng</field>
+            <field name="template_type">testimonial</field>
+            <field name="content"><![CDATA[⭐⭐⭐⭐⭐
+
+"{{testimonial_text}}"
+
+- {{customer_name}}
+
+Thank you for your amazing feedback! 💙
+
+We love hearing from our satisfied customers. Your trust means the world to us! 🙏
+
+#CustomerLove #Testimonial #{{company_name}}]]></field>
+        </record>
+
+        <record id="template_weekly_tips" model="social.post.template">
+            <field name="name">💡 Tips Hàng Tuần</field>
+            <field name="template_type">educational</field>
+            <field name="content"><![CDATA[💡 TIP OF THE WEEK 💡
+
+{{tip_title}}
+
+{{tip_description}}
+
+👉 Try it out and let us know your results!
+
+Have questions? Drop them in the comments below! 👇
+
+#Tips #DidYouKnow #{{company_name}}]]></field>
+        </record>
+
+        <record id="template_behind_the_scenes" model="social.post.template">
+            <field name="name">🎬 Behind The Scenes</field>
+            <field name="template_type">engagement</field>
+            <field name="content"><![CDATA[🎬 BEHIND THE SCENES 🎬
+
+Ever wondered how we {{process_description}}?
+
+Here's a sneak peek into our {{department_name}} team! 👀
+
+{{additional_details}}
+
+Drop a ❤️ if you'd like to see more behind-the-scenes content!
+
+#BehindTheScenes #TeamWork #{{company_name}}]]></field>
+        </record>
+
+        <record id="template_event_announcement" model="social.post.template">
+            <field name="name">📅 Thông Báo Sự Kiện</field>
+            <field name="template_type">event</field>
+            <field name="content"><![CDATA[📅 SAVE THE DATE! 📅
+
+{{event_name}}
+
+📍 Location: {{location}}
+🗓️ Date: {{event_date}}
+⏰ Time: {{event_time}}
+
+{{event_description}}
+
+🎟️ Register now: {{registration_link}}
+
+Limited seats available! Don't miss out! 🎯
+
+#Event #SaveTheDate #{{company_name}}]]></field>
+        </record>
+
+    </data>
+</odoo>

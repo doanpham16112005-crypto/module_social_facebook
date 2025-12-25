@@ -1,0 +1,31 @@
+/*
+ * CSS for Social Facebook Module
+ */
+
+.social_post_card {
+    border-left: 4px solid #1877f2;
+    transition: transform 0.2s;
+}
+
+.social_post_card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.facebook_badge {
+    background-color: #1877f2;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.engagement_stats {
+    display: flex;
+    gap: 1rem;
+}
+
+.engagement_stats .stat {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}

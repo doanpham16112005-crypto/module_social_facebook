@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="social_post_view_calendar" model="ir.ui.view">
+        <field name="name">social.post.calendar</field>
+        <field name="model">social.post</field>
+        <field name="arch" type="xml">
+            <calendar
+                string="Content Calendar"
+                date_start="scheduled_date"
+                mode="month"
+                color="state"
+                quick_create="0"
+                event_open_popup="1">
+                
+                <!-- Required fields for calendar -->
+                <field name="content"/>
+                <field name="account_id"/>
+                <field name="state"/>
+                
+            </calendar>
+        </field>
+    </record>
+
+    <record id="action_social_post_calendar" model="ir.actions.act_window">
+        <field name="name">Content Calendar</field>
+        <field name="res_model">social.post</field>
+        <field name="view_mode">calendar,tree,form</field>
+        <field name="domain">[('scheduled_date', '!=', False)]</field>
+        <field name="context">{'default_post_type': 'scheduled'}</field>
+    </record>
+
+</odoo>

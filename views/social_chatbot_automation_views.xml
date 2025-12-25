@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Tree View -->
+    <record id="social_chatbot_automation_view_tree" model="ir.ui.view">
+        <field name="name">social.chatbot.automation.tree</field>
+        <field name="model">social.chatbot.automation</field>
+        <field name="arch" type="xml">
+            <list string="Chatbot Automation Rules" 
+                  decoration-muted="not active">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="trigger_keywords"/>
+                <field name="priority"/>
+                <field name="account_id"/>
+                <field name="triggered_count"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="social_chatbot_automation_view_form" model="ir.ui.view">
+        <field name="name">social.chatbot.automation.form</field>
+        <field name="model">social.chatbot.automation</field>
+        <field name="arch" type="xml">
+            <form string="Chatbot Automation Rule">
+                <header>
+                    <button name="action_test_rule" type="object" 
+                            string="Test Rule" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_triggered_messages" type="object"
+                                class="oe_stat_button" icon="fa-comment">
+                            <field name="triggered_count" widget="statinfo" 
+                                   string="Triggered"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Archived" 
+                            bg_color="text-bg-danger" 
+                            invisible="active"/>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="active" invisible="1"/>
+                            <field name="account_id"/>
+                        </group>
+                        <group>
+                            <field name="priority"/>
+                            <field name="sequence"/>
+                            <field name="last_triggered_date" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Configuration">
+                            <group>
+                                <field name="trigger_keywords" 
+                                       placeholder="mua,đặt hàng,order,buy"/>
+                                <field name="response_text" 
+                                       widget="text" 
+                                       placeholder="Enter response message..."/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="social_chatbot_automation_view_search" model="ir.ui.view">
+        <field name="name">social.chatbot.automation.search</field>
+        <field name="model">social.chatbot.automation</field>
+        <field name="arch" type="xml">
+            <search string="Search Chatbot Rules">
+                <field name="name"/>
+                <field name="trigger_keywords"/>
+                <filter string="Active" name="filter_active" 
+                        domain="[('active', '=', True)]"/>
+                <filter string="Archived" name="filter_archived" 
+                        domain="[('active', '=', False)]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_account" string="Facebook Page" 
+                            context="{'group_by': 'account_id'}"/>
+                    <filter name="group_priority" string="Priority" 
+                            context="{'group_by': 'priority'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_social_chatbot_automation" model="ir.actions.act_window">
+        <field name="name">Chatbot Automation</field>
+        <field name="res_model">social.chatbot.automation</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="social_chatbot_automation_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first chatbot automation rule!
+            </p>
+            <p>
+                Chatbot rules automatically respond to customer messages based on keywords.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item (thêm vào menu Social Facebook) -->
+    <menuitem id="menu_social_chatbot_automation"
+              name="Chatbot Automation"
+              parent="menu_social_facebook_configuration"
+              action="action_social_chatbot_automation"
+              sequence="30"/>
+
+</odoo>

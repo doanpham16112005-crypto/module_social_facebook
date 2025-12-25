@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ===================================================================== -->
+    <!-- MESSAGE (CONVERSATION) - LIST VIEW                                    -->
+    <!-- ===================================================================== -->
+    <record id="social_message_view_tree" model="ir.ui.view">
+        <field name="name">social.message.list</field>
+        <field name="model">social.message</field>
+        <field name="arch" type="xml">
+            <list string="Facebook Conversations" 
+                  decoration-info="is_from_customer == False"
+                  decoration-muted="is_from_customer == True">
+                <field name="account_id"/>
+                <field name="facebook_user_id"/>
+                <field name="customer_name"/>
+                <field name="message"/>
+                <field name="created_date"/>
+                <field name="last_message_date"/>
+                <field name="is_from_customer" widget="boolean"/>
+                <field name="chatbot_state" widget="badge"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSAGE - FORM VIEW                                                   -->
+    <!-- ===================================================================== -->
+    <record id="social_message_view_form" model="ir.ui.view">
+        <field name="name">social.message.form</field>
+        <field name="model">social.message</field>
+        <field name="arch" type="xml">
+            <form string="Facebook Message / Conversation">
+                <header>
+                    <field name="chatbot_state" widget="statusbar" 
+                           statusbar_visible="idle,ask_name,ask_phone,show_products,confirm_order,completed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="facebook_user_id" string="Conversation with"/>
+                        <h1>
+                            <field name="customer_name" placeholder="Customer Name"/>
+                        </h1>
+                        <h3>
+                            <field name="facebook_user_id" readonly="1"/>
+                        </h3>
+                    </div>
+                    
+                    <group>
+                        <group string="Conversation Info">
+                            <field name="account_id" readonly="1"/>
+                            <field name="message_id" readonly="1"/>
+                            <field name="is_from_customer" widget="boolean"/>
+                        </group>
+                        <group string="Timestamps">
+                            <field name="created_date" readonly="1"/>
+                            <field name="last_message_date" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Message Content">
+                        <field name="message" nolabel="1" widget="text"/>
+                    </group>
+                    
+                    <group string="Customer Info (Chatbot)">
+                        <group>
+                            <field name="customer_phone"/>
+                        </group>
+                        <group>
+                            <field name="chatbot_state"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Products" name="products">
+                            <field name="selected_product_ids" nolabel="1">
+                                <list>
+                                    <field name="display_name"/>
+                                    <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                    <field name="active" widget="boolean"/>
+                                    <field name="sequence"/>
+                                </list>
+                            </field>
+                        </page>
+                        
+                        <page string="Related Records" name="related">
+                            <group>
+                                <field name="lead_id"/>
+                                <field name="messenger_order_id"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_ids" widget="mail_thread"/>
+                    <field name="activity_ids" widget="mail_activity"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSAGE - SEARCH VIEW                                                 -->
+    <!-- ===================================================================== -->
+    <record id="social_message_view_search" model="ir.ui.view">
+        <field name="name">social.message.search</field>
+        <field name="model">social.message</field>
+        <field name="arch" type="xml">
+            <search string="Search Conversations">
+                <field name="facebook_user_id"/>
+                <field name="customer_name"/>
+                <field name="message"/>
+                <field name="account_id"/>
+                
+                <filter string="From Customer" name="filter_from_customer" 
+                        domain="[('is_from_customer', '=', True)]"/>
+                <filter string="From Page" name="filter_from_page" 
+                        domain="[('is_from_customer', '=', False)]"/>
+                <separator/>
+                
+                <filter string="Idle" name="filter_idle" 
+                        domain="[('chatbot_state', '=', 'idle')]"/>
+                <filter string="In Progress" name="filter_progress" 
+                        domain="[('chatbot_state', 'in', ['ask_name', 'ask_phone', 'show_products', 'confirm_order'])]"/>
+                <filter string="Completed" name="filter_completed" 
+                        domain="[('chatbot_state', '=', 'completed')]"/>
+                <separator/>
+                
+                <filter string="This Week" name="filter_week" 
+                        domain="[('created_date', '&gt;=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter string="This Month" name="filter_month" 
+                        domain="[('created_date', '&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                
+                <filter string="Has Lead" name="filter_has_lead" 
+                        domain="[('lead_id', '!=', False)]"/>
+                <filter string="Has Order" name="filter_has_order" 
+                        domain="[('messenger_order_id', '!=', False)]"/>
+                <separator/>
+                
+                <filter string="Group By Page" name="group_account" 
+                        context="{'group_by': 'account_id'}"/>
+                <filter string="Group By State" name="group_state" 
+                        context="{'group_by': 'chatbot_state'}"/>
+                <filter string="Group By Date" name="group_date" 
+                        context="{'group_by': 'created_date:month'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- MESSAGE - ACTION                                                      -->
+    <!-- ===================================================================== -->
+    <record id="action_social_message" model="ir.actions.act_window">
+        <field name="name">Facebook Conversations</field>
+        <field name="res_model">social.message</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="social_message_view_search"/>
+        <field name="context">{'search_default_filter_from_customer': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No conversations yet!
+            </p>
+            <p>
+                Conversations will appear here when customers message your Facebook page.
+            </p>
+            <p>
+                <strong>Webhook must be configured to receive messages automatically.</strong>
+            </p>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- EMAIL NOTIFICATION TEMPLATES -->
+
+        <record id="mail_template_post_published" model="mail.template">
+            <field name="name">Social Facebook: Post Published</field>
+            <field name="model_id" ref="model_social_post"/>
+            <field name="subject">Your Facebook post has been published</field>
+            <field name="body_html"><![CDATA[
+<div style="font-family: Arial, sans-serif;">
+    <h3>Post Published Successfully!</h3>
+    <p>Your post has been published to Facebook:</p>
+    <blockquote style="border-left: 3px solid #1877f2; padding-left: 10px;">
+        ${object.content}
+    </blockquote>
+    <p>
+        <strong>Page:</strong> ${object.account_id.name}<br/>
+        <strong>Published:</strong> ${object.published_date}<br/>
+    </p>
+    <p><a href="${object.facebook_post_url}" style="color: #1877f2;">View on Facebook</a></p>
+</div>
+            ]]></field>
+        </record>
+
+        <record id="mail_template_new_comment" model="mail.template">
+            <field name="name">Social Facebook: New Comment</field>
+            <field name="model_id" ref="model_social_comment"/>
+            <field name="subject">New comment on your Facebook post</field>
+            <field name="body_html"><![CDATA[
+<div style="font-family: Arial, sans-serif;">
+    <h3>New Comment Received!</h3>
+    <p><strong>${object.author_name}</strong> commented:</p>
+    <blockquote style="border-left: 3px solid #1877f2; padding-left: 10px;">
+        ${object.message}
+    </blockquote>
+    <p>On post: "${object.post_id.content[:100]}..."</p>
+    <p><a href="/web#id=${object.id}&model=social.comment" style="color: #1877f2;">Reply in Odoo</a></p>
+</div>
+            ]]></field>
+        </record>
+
+    </data>
+</odoo>

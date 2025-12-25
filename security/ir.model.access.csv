@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_social_account_user,social.account.user,model_social_account,base.group_user,1,1,1,1
+access_social_post_user,social.post.user,model_social_post,base.group_user,1,1,1,1
+access_social_comment_user,social.comment.user,model_social_comment,base.group_user,1,1,1,1
+access_social_message_user,social.message.user,model_social_message,base.group_user,1,1,1,1
+access_social_analytics_user,social.analytics.user,model_social_analytics,base.group_user,1,0,0,0
+access_social_post_template_user,social.post.template.user,model_social_post_template,base.group_user,1,1,1,1
+access_social_messenger_product_user,social.messenger.product.user,model_social_messenger_product,base.group_user,1,1,1,1
+access_social_messenger_order_user,social.messenger.order.user,model_social_messenger_order,base.group_user,1,1,1,1
+access_social_conversation_user,social.conversation.user,model_social_conversation,base.group_user,1,1,1,1
+
+access_social_chatbot_automation_user,access_social_chatbot_automation_user,model_social_chatbot_automation,base.group_user,1,0,0,0
+access_social_chatbot_automation_manager,access_social_chatbot_automation_manager,model_social_chatbot_automation,group_social_facebook_manager,1,1,1,1
