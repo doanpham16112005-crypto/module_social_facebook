@@ -18,14 +18,15 @@ class FacebookWebhookController(http.Controller):
     Methods:
     - GET: Verify webhook (subscription)
     - POST: Nhận events từ Facebook
+    
+    ✅ CHATBOT FLOW:
+    idle → ask_name → ask_phone → show_products → confirm_order → completed
     """
     
     @http.route('/social/facebook/webhook', type='http', auth='public', 
                 methods=['GET'], csrf=False)
     def webhook_verify(self, **kwargs):
-        """
-        Verify webhook theo Facebook requirements.
-        """
+        """Verify webhook theo Facebook requirements"""
         mode = kwargs.get('hub.mode')
         token = kwargs.get('hub.verify_token')
         challenge = kwargs.get('hub.challenge')
@@ -34,29 +35,26 @@ class FacebookWebhookController(http.Controller):
             'module_social_facebook.verify_token', '16112005'
         )
         
-        _logger.info(f'🔔 Webhook verify attempt - mode: {mode}, token: {token}')
+        _logger.info(f'🔔 Webhook verify - mode: {mode}, token: {token}')
         
         if mode == 'subscribe' and token == verify_token:
-            _logger.info('✅ Webhook verified successfully!')
+            _logger.info('✅ Webhook verified!')
             return challenge
         else:
-            _logger.warning(f'❌ Webhook verify failed - token mismatch')
+            _logger.warning(f'❌ Webhook verify failed')
             return 'Forbidden', 403
     
     @http.route('/social/facebook/webhook', type='http', auth='public', 
                 methods=['POST'], csrf=False)
     def webhook_callback(self, **kwargs):
-        """
-        Nhận và xử lý events từ Facebook.
-        """
+        """Nhận và xử lý events từ Facebook"""
         try:
             body = request.httprequest.get_data(as_text=True)
             data = json.loads(body)
             
-            _logger.info(f'🔔 WEBHOOK RECEIVED: {json.dumps(data, indent=2)}')
+            _logger.info(f'🔔 WEBHOOK RECEIVED')
             
             if data.get('object') != 'page':
-                _logger.warning(f'⚠️ Unknown object type: {data.get("object")}')
                 return 'OK'
             
             for entry in data.get('entry', []):
@@ -65,601 +63,380 @@ class FacebookWebhookController(http.Controller):
             return 'OK'
             
         except Exception as e:
-            _logger.error(f'❌ Error processing webhook: {e}', exc_info=True)
+            _logger.error(f'❌ Webhook error: {e}', exc_info=True)
             return 'OK'
     
     def _process_entry(self, entry):
-        """Xử lý một entry từ webhook"""
+        """Xử lý entry"""
         if 'messaging' in entry:
             for event in entry['messaging']:
                 self._process_messaging_event(event)
-        
-        if 'changes' in entry:
-            for change in entry['changes']:
-                self._process_change_event(change)
     
     def _process_messaging_event(self, event):
-        """Xử lý messaging events"""
+        """Xử lý messaging event"""
         sender_id = event.get('sender', {}).get('id')
         recipient_id = event.get('recipient', {}).get('id')
         
         if not sender_id or not recipient_id:
-            _logger.warning('⚠️ Missing sender_id or recipient_id')
             return
-        
-        _logger.info(f'📨 Processing event from {sender_id} to {recipient_id}')
         
         conversation = self._find_or_create_conversation(sender_id, recipient_id)
         
         if not conversation:
-            _logger.error(f'❌ Failed to find/create conversation')
             return
         
         if 'message' in event:
             message_data = event['message']
             
             if message_data.get('is_echo'):
-                _logger.debug('⏭️ Skipping echo message')
                 return
             
             if 'quick_reply' in message_data:
                 payload = message_data['quick_reply'].get('payload', '')
-                self._handle_quick_reply(conversation, payload, message_data.get('text', ''))
+                text = message_data.get('text', '')
+                _logger.info(f'🔘 Quick Reply: {payload}')
+                self._process_chatbot_flow(conversation, payload)
             else:
-                self._handle_message(conversation, message_data, sender_id)
-        
-        elif 'postback' in event:
-            self._handle_postback(conversation, event['postback'], sender_id)
-        
-        elif 'read' in event:
-            self._handle_read(conversation, event['read'])
+                text = message_data.get('text', '')
+                self._process_chatbot_flow(conversation, text)
     
-    def _process_change_event(self, change):
-        """Xử lý change events"""
-        field = change.get('field')
-        value = change.get('value')
-        
-        if field == 'leadgen':
-            self._handle_leadgen_event(value)
-        elif field == 'feed':
-            self._handle_feed_event(value)
-        elif field == 'comments':
-            self._handle_comment_event(value)
-    
-    # -------------------------------------------------------------------------
-    # MESSAGE HANDLERS
-    # -------------------------------------------------------------------------
-    
-    def _handle_message(self, conversation, message_data, sender_id):
-        """Xử lý tin nhắn mới"""
-        mid = message_data.get('mid')
-        text = message_data.get('text', '')
-        attachments = message_data.get('attachments', [])
-        
-        _logger.info(f'📨 Processing message: "{text[:100]}..."')
-        
-        # Check duplicate
-        existing = request.env['social.message'].sudo().search([
-            ('message_id', '=', mid)
-        ], limit=1)
-        
-        if existing:
-            _logger.debug(f'⏭️ Message {mid} already exists')
-            return
-        
-        # Create message record
-        message_vals = {
-            'message_id': mid,
-            'message': text,
-            'is_from_customer': True,
-            'facebook_user_id': sender_id,
-            'account_id': conversation.account_id.id,
-            'company_id': conversation.company_id.id,
-        }
-        
-        if attachments:
-            message_vals['attachments'] = json.dumps(attachments)
-        
-        try:
-            msg_record = request.env['social.message'].sudo().create(message_vals)
-            _logger.info(f'✅ Created message record: {msg_record.id}')
-        except Exception as e:
-            _logger.error(f'❌ Failed to create message: {e}')
-            return
-        
-        # ✅ XỬ LÝ CHATBOT FLOW (CÓ STATE MACHINE)
-        self._process_chatbot_flow(conversation, text)
-    
-    def _handle_quick_reply(self, conversation, payload, text):
-        """Xử lý quick reply"""
-        _logger.info(f'🔘 Quick Reply received - payload: {payload}, text: {text}')
-        self._process_chatbot_flow(conversation, payload)
-    
-    def _handle_postback(self, conversation, postback_data, sender_id):
-        """Xử lý postback"""
-        payload = postback_data.get('payload', '')
-        title = postback_data.get('title', '')
-        _logger.info(f'🔘 Postback received - payload: {payload}, title: {title}')
-        self._process_chatbot_flow(conversation, payload)
-    
-    def _handle_read(self, conversation, read_data):
-        """Handle read receipts"""
-        watermark = read_data.get('watermark')
-        _logger.debug(f'👁️ Message read - watermark: {watermark}')
-    
-    # -------------------------------------------------------------------------
-    # ✅ CHATBOT FLOW (STATE MACHINE ĐẦY ĐỦ)
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # ✅ CHATBOT FLOW - STATE MACHINE
+    # =========================================================================
     
     def _process_chatbot_flow(self, conversation, user_message):
         """
-        Xử lý chatbot flow với state machine.
+        Chatbot flow với state machine
+        
+        States:
+        - idle: Chờ lệnh
+        - ask_name: Hỏi tên
+        - ask_phone: Hỏi SĐT
+        - show_products: Hiển thị sản phẩm
+        - confirm_order: Xác nhận
+        - completed: Hoàn tất
         """
         chatbot_enabled = request.env['ir.config_parameter'].sudo().get_param(
             'module_social_facebook.chatbot_enabled', 'False'
         )
         
         if chatbot_enabled != 'True':
-            _logger.info('⚠️ Chatbot disabled')
             return
         
-        # ✅ KIỂM TRA FIELD TỒN TẠI
-        if 'chatbot_state' not in conversation._fields:
-            _logger.error('❌ CRITICAL: chatbot_state field does not exist in social.message!')
-            _logger.error('   Solution 1: Add chatbot_state field to models/social_message.py')
-            _logger.error('   Solution 2: Use social.conversation model instead')
-            # GỬI TIN NHẮN LỖI CHO USER
-            self._send_message(conversation, 
-                'Xin lỗi, hệ thống chatbot đang gặp sự cố. Vui lòng liên hệ trực tiếp với chúng tôi. 🙏')
-            return
-        
-        # Lấy state hiện tại
         current_state = conversation.chatbot_state or 'idle'
-        _logger.info(f'🤖 Current state: {current_state}, Message: "{user_message[:50]}..."')
-    
-    # ... (phần còn lại giữ nguyên)
+        _logger.info(f'🤖 State: {current_state} | Message: "{user_message[:30]}..."')
         
-        # ✅ STATE: IDLE - Chờ lệnh bắt đầu
         if current_state == 'idle':
-            self._chatbot_start_flow(conversation, user_message)
+            self._state_idle(conversation, user_message)
         
-        # ✅ STATE: ASK_NAME - Đang hỏi tên
         elif current_state == 'ask_name':
-            self._chatbot_save_name_ask_phone(conversation, user_message)
+            self._state_ask_name(conversation, user_message)
         
-        # ✅ STATE: ASK_PHONE - Đang hỏi SĐT
         elif current_state == 'ask_phone':
-            self._chatbot_save_phone_show_products(conversation, user_message)
+            self._state_ask_phone(conversation, user_message)
         
-        # ✅ STATE: SHOW_PRODUCTS - Đã hiển thị sản phẩm, chờ chọn
         elif current_state == 'show_products':
-            self._chatbot_handle_product_selection(conversation, user_message)
+            self._state_show_products(conversation, user_message)
         
-        # ✅ STATE: CONFIRM_ORDER - Chờ xác nhận đặt hàng
         elif current_state == 'confirm_order':
-            self._chatbot_confirm_order(conversation, user_message)
+            self._state_confirm_order(conversation, user_message)
         
-        # ✅ STATE: COMPLETED - Đã hoàn tất
         elif current_state == 'completed':
-            # Reset về idle hoặc xử lý lệnh mới
             conversation.sudo().write({'chatbot_state': 'idle'})
-            self._chatbot_start_flow(conversation, user_message)
+            self._state_idle(conversation, user_message)
     
     # -------------------------------------------------------------------------
-    # ✅ CHATBOT STATE HANDLERS
+    # STATE HANDLERS
     # -------------------------------------------------------------------------
     
-    def _chatbot_start_flow(self, conversation, user_message):
-        """
-        STATE: idle → ask_name
+    def _state_idle(self, conv, msg):
+        """STATE: idle → ask_name"""
+        triggers = ['mua', 'sản phẩm', 'giá', 'order', 'buy', 'menu', 'xem']
         
-        Triggers: mua, sản phẩm, giá, order, buy
-        """
-        trigger_keywords = ['mua', 'sản phẩm', 'giá', 'order', 'buy', 'xem hàng', 'menu']
-        
-        if any(kw in user_message.lower() for kw in trigger_keywords):
-            _logger.info('🚀 Starting chatbot flow')
+        if any(kw in msg.lower() for kw in triggers):
+            _logger.info('🚀 Start chatbot flow')
             
-            # ✅ KIỂM TRA FIELD TỒN TẠI TRƯỚC KHI GHI
-            try:
-                if 'chatbot_state' in conversation._fields:
-                    conversation.sudo().write({'chatbot_state': 'ask_name'})
-                    _logger.info('✅ State updated to ask_name')
-                else:
-                    _logger.error('❌ Field chatbot_state does not exist in social.message!')
-                    _logger.error('   Please add the field or use social.conversation model')
-                    # ✅ DỪNG NGAY ĐỂ TRÁNH LẶP VÔ HẠN
-                    return
-            except Exception as e:
-                _logger.error(f'❌ Failed to update state: {e}')
-                return
+            conv.sudo().write({'chatbot_state': 'ask_name'})
             
-            # Gửi tin nhắn hỏi tên
-            welcome_msg = """Xin chào! Cảm ơn bạn đã quan tâm đến sản phẩm của chúng tôi! 😊
-
-    Để phục vụ bạn tốt hơn, bạn vui lòng cho tôi biết **tên** của bạn?"""
-            
-            self._send_message(conversation, welcome_msg)
-        
-        else:
-            # Không match → Gửi hướng dẫn
-            self._send_message(conversation, 
-                'Xin chào! Gửi "mua" hoặc "xem sản phẩm" để bắt đầu mua hàng nhé! 😊')
+            self._send_text(conv, 
+                "Xin chào! Cảm ơn bạn đã quan tâm đến sản phẩm! 😊\n\n"
+                "Để phục vụ bạn tốt hơn, bạn vui lòng cho tôi biết **tên** của bạn?")
     
-    def _chatbot_save_name_ask_phone(self, conversation, user_message):
-        """
-        STATE: ask_name → ask_phone
-        
-        Lưu tên, hỏi SĐT
-        """
-        name = user_message.strip()
+    def _state_ask_name(self, conv, msg):
+        """STATE: ask_name → ask_phone"""
+        name = msg.strip()
         
         if len(name) < 2:
-            self._send_message(conversation, 
-                'Tên bạn có vẻ hơi ngắn. Bạn vui lòng nhập lại tên đầy đủ nhé! 😊')
+            self._send_text(conv, "Tên có vẻ ngắn quá. Vui lòng nhập lại tên đầy đủ! 😊")
             return
         
-        _logger.info(f'💾 Saving customer name: {name}')
+        _logger.info(f'💾 Save name: {name}')
         
-        # Lưu tên
-        conversation.sudo().write({
+        conv.sudo().write({
             'customer_name': name,
             'chatbot_state': 'ask_phone'
         })
         
-        # Hỏi SĐT
-        self._send_message(conversation, 
-            f'Rất vui được làm quen với {name}! 👋\n\n'
-            'Để chúng tôi có thể liên hệ xác nhận đơn hàng, bạn vui lòng cung cấp **số điện thoại**?')
+        self._send_text(conv, 
+            f"Rất vui được làm quen với {name}! 👋\n\n"
+            "Để liên hệ xác nhận đơn hàng, bạn vui lòng cung cấp **số điện thoại**?")
     
-    def _chatbot_save_phone_show_products(self, conversation, user_message):
-        """
-        STATE: ask_phone → show_products
+    def _state_ask_phone(self, conv, msg):
+        """STATE: ask_phone → show_products"""
+        phone = msg.strip()
         
-        Lưu SĐT, hiển thị sản phẩm
-        """
-        phone = user_message.strip()
-        
-        # Validate phone (10-11 số)
-        phone_pattern = r'^[0-9\s\+\-\(\)]{9,15}$'
-        
-        if not re.match(phone_pattern, phone):
-            self._send_message(conversation, 
-                'Số điện thoại có vẻ không hợp lệ. Vui lòng nhập lại số điện thoại của bạn (10-11 số).')
+        if not re.match(r'^[0-9\s\+\-\(\)]{9,15}$', phone):
+            self._send_text(conv, "SĐT không hợp lệ. Vui lòng nhập lại (10-11 số)!")
             return
         
-        _logger.info(f'💾 Saving customer phone: {phone}')
+        _logger.info(f'💾 Save phone: {phone}')
         
-        # Lưu SĐT
-        conversation.sudo().write({
+        conv.sudo().write({
             'customer_phone': phone,
             'chatbot_state': 'show_products'
         })
         
-        # Hiển thị danh sách sản phẩm
-        self._send_product_list(conversation)
+        self._send_product_list(conv)
     
-    def _chatbot_handle_product_selection(self, conversation, user_message):
-        """
-        STATE: show_products → confirm_order
-        
-        Lưu sản phẩm đã chọn, hỏi xác nhận
-        """
-        # Check nếu user chọn sản phẩm (payload PRODUCT_XXX)
-        if user_message.startswith('PRODUCT_'):
+    def _state_show_products(self, conv, msg):
+        """STATE: show_products → confirm_order"""
+        if msg.startswith('PRODUCT_'):
             try:
-                product_id = int(user_message.replace('PRODUCT_', ''))
+                product_id = int(msg.replace('PRODUCT_', ''))
                 product = request.env['social.messenger.product'].sudo().browse(product_id)
                 
                 if not product.exists() or not product.active:
-                    self._send_message(conversation, 
-                        'Xin lỗi, sản phẩm này hiện không còn bán. Vui lòng chọn sản phẩm khác.')
-                    self._send_product_list(conversation)
+                    self._send_text(conv, "Sản phẩm không còn bán. Vui lòng chọn SP khác!")
+                    self._send_product_list(conv)
                     return
                 
-                _logger.info(f'✅ Product selected: {product.product_id.name}')
+                _logger.info(f'✅ Selected: {product.product_id.name}')
                 
-                # Lưu sản phẩm đã chọn
-                conversation.sudo().write({
+                conv.sudo().write({
                     'selected_product_ids': [(6, 0, [product.id])],
                     'chatbot_state': 'confirm_order'
                 })
                 
-                # Build confirmation message
-                price_text = f"{product.price:,.0f} {product.currency_id.symbol}" if product.price > 0 else "Liên hệ"
+                price_text = f"{product.price:,.0f}đ" if product.price > 0 else "Liên hệ"
                 
                 confirm_msg = f"""✅ Bạn đã chọn:
 
-📦 **{product.product_id.name}**
+📦 {product.product_id.name}
 💰 Giá: {price_text}
 
-"""
-                
-                if product.description:
-                    confirm_msg += f"📝 {product.description}\n\n"
-                
-                confirm_msg += f"""📋 Thông tin đặt hàng:
-👤 Tên: {conversation.customer_name}
-📞 SĐT: {conversation.customer_phone}
+📋 Thông tin:
+👤 Tên: {conv.customer_name}
+📞 SĐT: {conv.customer_phone}
 
-Bạn có muốn **xác nhận đặt hàng** không?
-
-👉 Trả lời **"Có"** để xác nhận
-👉 Trả lời **"Không"** để chọn lại"""
+Xác nhận đặt hàng?
+👉 "Có" để xác nhận
+👉 "Không" để chọn lại"""
                 
-                self._send_message(conversation, confirm_msg)
+                self._send_text(conv, confirm_msg)
                 
             except Exception as e:
-                _logger.error(f'❌ Error handling product selection: {e}')
-                self._send_message(conversation, 'Đã có lỗi xảy ra. Vui lòng thử lại.')
-        
+                _logger.error(f'❌ Error: {e}')
+                self._send_text(conv, "Có lỗi xảy ra. Vui lòng thử lại!")
         else:
-            # User gửi text thường → Nhắc chọn sản phẩm
-            self._send_message(conversation, 
-                'Vui lòng chọn một sản phẩm từ danh sách bên trên.')
+            self._send_text(conv, "Vui lòng chọn sản phẩm từ danh sách!")
     
-    def _chatbot_confirm_order(self, conversation, user_message):
-        """
-        STATE: confirm_order → completed
+    def _state_confirm_order(self, conv, msg):
+        """STATE: confirm_order → completed (TẠO ORDER + LEAD)"""
+        msg_lower = msg.lower().strip()
         
-        Tạo order + CRM lead khi user xác nhận "Có"
-        """
-        message_lower = user_message.lower().strip()
-        
-        # Check xác nhận
-        confirm_keywords = ['có', 'yes', 'ok', 'đồng ý', 'đặt hàng', 'chốt đơn']
-        cancel_keywords = ['không', 'no', 'cancel', 'hủy', 'chọn lại']
-        
-        if any(kw in message_lower for kw in confirm_keywords):
-            _logger.info('🛒 User confirmed order')
+        if any(kw in msg_lower for kw in ['có', 'yes', 'ok', 'đồng ý', 'đặt']):
+            _logger.info('🛒 User confirmed!')
             
-            # ✅ TẠO ORDER VÀ CRM LEAD
             try:
                 # 1. Tạo Messenger Order
-                order = self._create_messenger_order(conversation)
+                order = self._create_order(conv)
                 
-                if order:
-                    # 2. Tạo Sale Order
-                    sale_order = order.create_sale_order()
-                    
-                    # 3. Tạo CRM Lead
-                    lead = self._create_crm_lead(conversation, order, sale_order)
-                    
-                    # 4. Chuyển state → completed
-                    conversation.sudo().write({
-                        'chatbot_state': 'completed',
-                        'messenger_order_id': order.id,
-                        'lead_id': lead.id if lead else False
-                    })
-                    
-                    # 5. Gửi thông báo thành công
-                    success_msg = f"""🎉 **Đặt hàng thành công!**
+                if not order:
+                    raise Exception('Failed to create order')
+                
+                # 2. Tạo Sale Order
+                sale_order = order.create_sale_order()
+                
+                # 3. Tạo CRM Lead
+                lead = self._create_lead(conv, order, sale_order)
+                
+                # 4. Update state
+                conv.sudo().write({
+                    'chatbot_state': 'completed',
+                    'messenger_order_id': order.id,
+                    'lead_id': lead.id if lead else False
+                })
+                
+                # 5. Gửi thông báo
+                success_msg = f"""🎉 **Đặt hàng thành công!**
 
-📝 Mã đơn hàng: **{order.name}**
-📝 Mã đơn bán: **{sale_order.name}**
+📝 Mã đơn hàng: {order.name}
+📝 Mã sale order: {sale_order.name}
 
-Chúng tôi sẽ liên hệ với bạn trong thời gian sớm nhất để xác nhận và giao hàng.
+Chúng tôi sẽ liên hệ sớm nhất!
 
-Cảm ơn bạn đã tin tưởng! 🙏
+Cảm ơn bạn! 🙏
 
 ---
 Gửi "mua" để tiếp tục mua sắm."""
-                    
-                    self._send_message(conversation, success_msg)
-                    
-                    _logger.info(f'✅ Order created: {order.name}, Sale Order: {sale_order.name}')
                 
-                else:
-                    raise Exception('Failed to create messenger order')
-                    
+                self._send_text(conv, success_msg)
+                
+                _logger.info(f'✅ Order: {order.name} | Sale: {sale_order.name}')
+                
             except Exception as e:
-                _logger.error(f'❌ Error creating order: {e}', exc_info=True)
-                
-                conversation.sudo().write({'chatbot_state': 'idle'})
-                
-                self._send_message(conversation, 
-                    'Đã có lỗi xảy ra khi tạo đơn hàng. Vui lòng liên hệ với chúng tôi qua hotline. Xin lỗi vì sự bất tiện này! 😔')
+                _logger.error(f'❌ Create order error: {e}', exc_info=True)
+                conv.sudo().write({'chatbot_state': 'idle'})
+                self._send_text(conv, "Có lỗi khi tạo đơn. Vui lòng liên hệ hotline! 😔")
         
-        elif any(kw in message_lower for kw in cancel_keywords):
-            _logger.info('❌ User cancelled order')
+        elif any(kw in msg_lower for kw in ['không', 'no', 'hủy', 'chọn lại']):
+            _logger.info('❌ User cancelled')
             
-            # Reset state, xóa sản phẩm đã chọn
-            conversation.sudo().write({
+            conv.sudo().write({
                 'chatbot_state': 'show_products',
                 'selected_product_ids': [(5, 0, 0)]
             })
             
-            self._send_message(conversation, 
-                'Đơn hàng đã được hủy. Hãy chọn lại sản phẩm bạn muốn nhé! 😊')
-            
-            # Re-send product list
-            self._send_product_list(conversation)
+            self._send_text(conv, "Đã hủy. Hãy chọn lại sản phẩm! 😊")
+            self._send_product_list(conv)
         
         else:
-            # User gửi text khác → Nhắc xác nhận
-            self._send_message(conversation, 
-                'Vui lòng trả lời **"Có"** để xác nhận hoặc **"Không"** để hủy.')
+            self._send_text(conv, 'Vui lòng trả lời "Có" hoặc "Không"!')
     
-    # -------------------------------------------------------------------------
-    # ✅ CREATE ORDER & CRM LEAD
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # ✅ CREATE ORDER & LEAD
+    # =========================================================================
     
-    def _create_messenger_order(self, conversation):
-        """
-        Tạo social.messenger.order
-        
-        Returns:
-            social.messenger.order record
-        """
+    def _create_order(self, conv):
+        """Tạo social.messenger.order"""
         try:
             order_vals = {
-                'conversation_id': conversation.id,
-                'facebook_user_id': conversation.facebook_user_id,
-                'customer_name': conversation.customer_name,
-                'customer_phone': conversation.customer_phone,
-                'product_ids': [(6, 0, conversation.selected_product_ids.ids)],
-                'company_id': conversation.company_id.id,
+                'facebook_user_id': conv.facebook_user_id,
+                'customer_name': conv.customer_name,
+                'customer_phone': conv.customer_phone,
+                'product_ids': [(6, 0, conv.selected_product_ids.ids)],
+                'company_id': conv.company_id.id,
                 'state': 'confirmed',
             }
             
             order = request.env['social.messenger.order'].sudo().create(order_vals)
-            
-            _logger.info(f'✅ Created messenger order: {order.name}')
-            
+            _logger.info(f'✅ Created order: {order.name}')
             return order
             
         except Exception as e:
-            _logger.error(f'❌ Failed to create messenger order: {e}')
+            _logger.error(f'❌ Create order failed: {e}')
             raise
     
-    def _create_crm_lead(self, conversation, messenger_order, sale_order):
-        """
-        Tạo crm.lead từ order
-        
-        Returns:
-            crm.lead record
-        """
+    def _create_lead(self, conv, order, sale_order):
+        """Tạo crm.lead"""
         try:
             Lead = request.env['crm.lead'].sudo()
             
-            # Check nếu đã có lead
-            if conversation.lead_id:
-                lead = conversation.lead_id
-                
+            if conv.lead_id:
+                lead = conv.lead_id
                 lead.message_post(
-                    body=f"""<strong>🛒 Order created from Facebook Messenger</strong><br/>
-                    Order: {messenger_order.name}<br/>
-                    Sale Order: {sale_order.name}<br/>
-                    Total: {messenger_order.total_amount:,.0f} {messenger_order.currency_id.symbol}
-                    """,
-                    message_type='comment',
-                    subtype_xmlid='mail.mt_comment'
+                    body=f"<strong>🛒 Order: {order.name}</strong><br/>"
+                         f"Sale Order: {sale_order.name}<br/>"
+                         f"Total: {order.total_amount:,.0f}đ",
+                    message_type='comment'
                 )
-                
-                _logger.info(f'✅ Updated existing lead: {lead.id}')
                 return lead
             
-            # Tạo lead mới
             lead_vals = {
-                'name': f'Facebook Order - {conversation.customer_name}',
+                'name': f'FB Order - {conv.customer_name}',
                 'type': 'opportunity',
-                'contact_name': conversation.customer_name,
-                'phone': conversation.customer_phone,
-                'expected_revenue': messenger_order.total_amount,
-                'description': f"""
-Lead from Facebook Messenger Order
+                'contact_name': conv.customer_name,
+                'phone': conv.customer_phone,
+                'expected_revenue': order.total_amount,
+                'description': f"""Lead from Facebook Messenger
 
-Order: {messenger_order.name}
+Order: {order.name}
 Sale Order: {sale_order.name}
-Total: {messenger_order.total_amount:,.0f} {messenger_order.currency_id.symbol}
+Total: {order.total_amount:,.0f}đ
 
 Products:
-{chr(10).join([f"- {p.product_id.name}: {p.price:,.0f} {p.currency_id.symbol}" for p in messenger_order.product_ids])}
+{chr(10).join([f"- {p.product_id.name}" for p in order.product_ids])}
 
-Customer Info:
-- Name: {conversation.customer_name}
-- Phone: {conversation.customer_phone}
-- Facebook PSID: {conversation.facebook_user_id}
-                """,
-                'company_id': conversation.company_id.id,
+Customer:
+- Name: {conv.customer_name}
+- Phone: {conv.customer_phone}
+- PSID: {conv.facebook_user_id}
+""",
+                'company_id': conv.company_id.id,
             }
             
-            # Tìm hoặc tạo Facebook source
-            source = request.env['utm.source'].sudo().search([
-                ('name', '=', 'Facebook')
-            ], limit=1)
+            source = request.env['utm.source'].sudo().search([('name', '=', 'Facebook')], limit=1)
             if not source:
                 source = request.env['utm.source'].sudo().create({'name': 'Facebook'})
             lead_vals['source_id'] = source.id
             
-            # Tạo lead
             lead = Lead.create(lead_vals)
-            
-            _logger.info(f'✅ Created CRM lead: {lead.id}')
-            
+            _logger.info(f'✅ Created lead: {lead.id}')
             return lead
             
         except Exception as e:
-            _logger.error(f'❌ Failed to create CRM lead: {e}')
+            _logger.error(f'❌ Create lead failed: {e}')
             return None
     
-    # -------------------------------------------------------------------------
-    # ✅ SEND MESSAGE HELPERS
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # SEND MESSAGE HELPERS
+    # =========================================================================
     
-    def _send_message(self, conversation, text):
-        """
-        Gửi tin nhắn text đơn giản
-        """
+    def _send_text(self, conv, text):
+        """Gửi tin nhắn text"""
         url = 'https://graph.facebook.com/v18.0/me/messages'
         
         payload = {
-            'recipient': {'id': conversation.facebook_user_id},
+            'recipient': {'id': conv.facebook_user_id},
             'message': {'text': text},
             'messaging_type': 'RESPONSE'
         }
         
-        params = {'access_token': conversation.account_id.access_token}
-        
-        _logger.info(f'📤 Sending message to {conversation.facebook_user_id}: "{text[:50]}..."')
+        params = {'access_token': conv.account_id.access_token}
         
         try:
             response = requests.post(url, json=payload, params=params, timeout=10)
             response.raise_for_status()
-            
-            result = response.json()
-            _logger.info(f'✅ Message sent: {result}')
-            
+            _logger.info(f'✅ Sent: "{text[:30]}..."')
             return True
-            
         except Exception as e:
-            _logger.error(f'❌ Failed to send message: {e}')
+            _logger.error(f'❌ Send failed: {e}')
             return False
     
-    def _send_product_list(self, conversation):
-        """
-        Gửi danh sách sản phẩm với Quick Replies
-        """
-        # Lấy sản phẩm active
+    def _send_product_list(self, conv):
+        """Gửi danh sách sản phẩm với Quick Replies"""
         products = request.env['social.messenger.product'].sudo().search([
             ('active', '=', True),
-            ('company_id', '=', conversation.company_id.id)
+            ('company_id', '=', conv.company_id.id)
         ], order='sequence, id')
         
         if not products:
-            self._send_message(conversation, 
-                'Xin lỗi, hiện tại chúng tôi chưa có sản phẩm nào. Vui lòng quay lại sau!')
-            return False
+            self._send_text(conv, "Xin lỗi, chưa có sản phẩm nào!")
+            return
         
-        # Build product list text
-        product_list = "📦 **Danh sách sản phẩm của chúng tôi:**\n\n"
+        product_list = "📦 **Danh sách sản phẩm:**\n\n"
         
-        for idx, product in enumerate(products, 1):
-            price_text = f"{product.price:,.0f} {product.currency_id.symbol}" if product.price > 0 else "Liên hệ"
-            product_list += f"{idx}. {product.product_id.name}\n"
-            product_list += f"   💰 Giá: {price_text}\n"
-            if product.description:
-                desc = product.description[:60] + '...' if len(product.description) > 60 else product.description
-                product_list += f"   📝 {desc}\n"
+        for idx, p in enumerate(products, 1):
+            price = f"{p.price:,.0f}đ" if p.price > 0 else "Liên hệ"
+            product_list += f"{idx}. {p.product_id.name}\n   💰 {price}\n"
+            if p.description:
+                product_list += f"   📝 {p.description[:50]}...\n"
             product_list += "\n"
         
-        product_list += "👇 Vui lòng chọn sản phẩm bạn muốn mua:"
+        product_list += "👇 Chọn sản phẩm:"
         
-        # Build Quick Replies
         quick_replies = []
-        for product in products[:11]:
-            title = product.quick_reply_title or product.product_id.name[:20]
+        for p in products[:11]:
             quick_replies.append({
                 'content_type': 'text',
-                'title': title,
-                'payload': f'PRODUCT_{product.id}'
+                'title': p.quick_reply_title or p.product_id.name[:20],
+                'payload': f'PRODUCT_{p.id}'
             })
         
-        # Send with Quick Replies
         url = 'https://graph.facebook.com/v18.0/me/messages'
         
         payload = {
-            'recipient': {'id': conversation.facebook_user_id},
+            'recipient': {'id': conv.facebook_user_id},
             'message': {
                 'text': product_list,
                 'quick_replies': quick_replies
@@ -667,59 +444,37 @@ Customer Info:
             'messaging_type': 'RESPONSE'
         }
         
-        params = {'access_token': conversation.account_id.access_token}
+        params = {'access_token': conv.account_id.access_token}
         
         try:
             response = requests.post(url, json=payload, params=params, timeout=10)
             response.raise_for_status()
-            
-            _logger.info(f'✅ Product list sent with {len(quick_replies)} quick replies')
-            return True
-            
+            _logger.info(f'✅ Sent product list ({len(quick_replies)} items)')
         except Exception as e:
-            _logger.error(f'❌ Failed to send product list: {e}')
-            return False
+            _logger.error(f'❌ Send product list failed: {e}')
     
-    # -------------------------------------------------------------------------
+    # =========================================================================
     # HELPERS
-    # -------------------------------------------------------------------------
-    
-    def _handle_leadgen_event(self, leadgen_data):
-        """Xử lý lead form submissions"""
-        pass
-    
-    def _handle_feed_event(self, feed_data):
-        """Handle post events"""
-        pass
-    
-    def _handle_comment_event(self, comment_data):
-        """Handle comment events"""
-        pass
+    # =========================================================================
     
     def _find_or_create_conversation(self, sender_id, recipient_id):
-        """Tìm hoặc tạo conversation"""
-        _logger.info(f'🔍 Finding conversation for user {sender_id}, page {recipient_id}')
-        
+        """Tìm/tạo conversation"""
         account = request.env['social.account'].sudo().search([
             ('facebook_page_id', '=', recipient_id)
         ], limit=1)
         
         if not account:
-            _logger.error(f'❌ No account found for page {recipient_id}')
+            _logger.error(f'❌ No account for page {recipient_id}')
             return None
         
-        _logger.info(f'✅ Found account: {account.name} (ID: {account.id})')
-        
-        conversation = request.env['social.message'].sudo().search([
+        conv = request.env['social.message'].sudo().search([
             ('facebook_user_id', '=', sender_id),
             ('account_id', '=', account.id),
         ], limit=1)
         
-        if conversation:
-            _logger.info(f'✅ Found existing conversation: {conversation.id}')
-            return conversation
+        if conv:
+            return conv
         
-        # Create new conversation
         conv_vals = {
             'facebook_user_id': sender_id,
             'account_id': account.id,
@@ -728,9 +483,9 @@ Customer Info:
         }
         
         try:
-            conversation = request.env['social.message'].sudo().create(conv_vals)
-            _logger.info(f'✅ Created new conversation: {conversation.id}')
-            return conversation
+            conv = request.env['social.message'].sudo().create(conv_vals)
+            _logger.info(f'✅ Created conversation: {conv.id}')
+            return conv
         except Exception as e:
-            _logger.error(f'❌ Failed to create conversation: {e}')
+            _logger.error(f'❌ Create conversation failed: {e}')
             return None
