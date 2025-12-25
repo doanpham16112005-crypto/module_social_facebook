@@ -118,13 +118,4 @@
         </field>
     </record>
 
-    <!-- ===================================================================== -->
-    <!-- MENU ITEM                                                             -->
-    <!-- ===================================================================== -->
-    <menuitem id="menu_social_chatbot_automation"
-              name="Chatbot Automation"
-              parent="menu_social_configuration"
-              action="action_social_chatbot_automation"
-              sequence="30"/>
-
 </odoo>
