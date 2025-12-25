@@ -194,14 +194,6 @@ class FacebookWebhookController(http.Controller):
     def _process_chatbot_flow(self, conversation, user_message):
         """
         Xử lý chatbot flow với state machine.
-        
-        States:
-        - idle: Chờ lệnh
-        - ask_name: Đang hỏi tên
-        - ask_phone: Đang hỏi SĐT
-        - show_products: Đã hiển thị sản phẩm
-        - confirm_order: Đang chờ xác nhận
-        - completed: Hoàn tất
         """
         chatbot_enabled = request.env['ir.config_parameter'].sudo().get_param(
             'module_social_facebook.chatbot_enabled', 'False'
@@ -211,9 +203,21 @@ class FacebookWebhookController(http.Controller):
             _logger.info('⚠️ Chatbot disabled')
             return
         
+        # ✅ KIỂM TRA FIELD TỒN TẠI
+        if 'chatbot_state' not in conversation._fields:
+            _logger.error('❌ CRITICAL: chatbot_state field does not exist in social.message!')
+            _logger.error('   Solution 1: Add chatbot_state field to models/social_message.py')
+            _logger.error('   Solution 2: Use social.conversation model instead')
+            # GỬI TIN NHẮN LỖI CHO USER
+            self._send_message(conversation, 
+                'Xin lỗi, hệ thống chatbot đang gặp sự cố. Vui lòng liên hệ trực tiếp với chúng tôi. 🙏')
+            return
+        
         # Lấy state hiện tại
         current_state = conversation.chatbot_state or 'idle'
         _logger.info(f'🤖 Current state: {current_state}, Message: "{user_message[:50]}..."')
+    
+    # ... (phần còn lại giữ nguyên)
         
         # ✅ STATE: IDLE - Chờ lệnh bắt đầu
         if current_state == 'idle':
@@ -256,13 +260,24 @@ class FacebookWebhookController(http.Controller):
         if any(kw in user_message.lower() for kw in trigger_keywords):
             _logger.info('🚀 Starting chatbot flow')
             
-            # Chuyển state → ask_name
-            conversation.sudo().write({'chatbot_state': 'ask_name'})
+            # ✅ KIỂM TRA FIELD TỒN TẠI TRƯỚC KHI GHI
+            try:
+                if 'chatbot_state' in conversation._fields:
+                    conversation.sudo().write({'chatbot_state': 'ask_name'})
+                    _logger.info('✅ State updated to ask_name')
+                else:
+                    _logger.error('❌ Field chatbot_state does not exist in social.message!')
+                    _logger.error('   Please add the field or use social.conversation model')
+                    # ✅ DỪNG NGAY ĐỂ TRÁNH LẶP VÔ HẠN
+                    return
+            except Exception as e:
+                _logger.error(f'❌ Failed to update state: {e}')
+                return
             
             # Gửi tin nhắn hỏi tên
             welcome_msg = """Xin chào! Cảm ơn bạn đã quan tâm đến sản phẩm của chúng tôi! 😊
 
-Để phục vụ bạn tốt hơn, bạn vui lòng cho tôi biết **tên** của bạn?"""
+    Để phục vụ bạn tốt hơn, bạn vui lòng cho tôi biết **tên** của bạn?"""
             
             self._send_message(conversation, welcome_msg)
         

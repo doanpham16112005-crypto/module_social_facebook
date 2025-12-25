@@ -32,7 +32,30 @@ class SocialMessage(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'create_date desc'
     _rec_name = 'facebook_user_id'
-    
+    # CHATBOT FIELDS
+    chatbot_state = fields.Selection([
+        ('idle', 'Idle'),
+        ('ask_name', 'Asking Name'),
+        ('ask_phone', 'Asking Phone'),
+        ('show_products', 'Showing Products'),
+        ('confirm_order', 'Confirming Order'),
+        ('completed', 'Completed'),
+    ], string='Chatbot State', default='idle')
+
+    customer_name = fields.Char(string='Customer Name')
+    customer_phone = fields.Char(string='Customer Phone')
+
+    selected_product_ids = fields.Many2many(
+        'social.messenger.product',
+        string='Selected Products'
+    )
+
+    messenger_order_id = fields.Many2one(
+        'social.messenger.order',
+        string='Messenger Order'
+    )
+
+    lead_id = fields.Many2one('crm.lead', string='Lead')
     # THÊM field này vào phần khai báo fields:
     conversation_id = fields.Many2one(
         'social.conversation',
