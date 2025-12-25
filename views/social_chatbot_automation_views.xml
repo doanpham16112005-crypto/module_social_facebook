@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Tree View -->
+    <!-- ===================================================================== -->
+    <!-- TREE VIEW                                                             -->
+    <!-- ===================================================================== -->
     <record id="social_chatbot_automation_view_tree" model="ir.ui.view">
         <field name="name">social.chatbot.automation.tree</field>
         <field name="model">social.chatbot.automation</field>
@@ -19,7 +21,9 @@
         </field>
     </record>
 
-    <!-- Form View -->
+    <!-- ===================================================================== -->
+    <!-- FORM VIEW                                                             -->
+    <!-- ===================================================================== -->
     <record id="social_chatbot_automation_view_form" model="ir.ui.view">
         <field name="name">social.chatbot.automation.form</field>
         <field name="model">social.chatbot.automation</field>
@@ -68,7 +72,9 @@
         </field>
     </record>
 
-    <!-- Search View -->
+    <!-- ===================================================================== -->
+    <!-- SEARCH VIEW                                                           -->
+    <!-- ===================================================================== -->
     <record id="social_chatbot_automation_view_search" model="ir.ui.view">
         <field name="name">social.chatbot.automation.search</field>
         <field name="model">social.chatbot.automation</field>
@@ -76,26 +82,32 @@
             <search string="Search Chatbot Rules">
                 <field name="name"/>
                 <field name="trigger_keywords"/>
+                <field name="account_id"/>
+                
                 <filter string="Active" name="filter_active" 
                         domain="[('active', '=', True)]"/>
                 <filter string="Archived" name="filter_archived" 
                         domain="[('active', '=', False)]"/>
-                <group expand="0" string="Group By">
-                    <filter name="group_account" string="Facebook Page" 
-                            context="{'group_by': 'account_id'}"/>
-                    <filter name="group_priority" string="Priority" 
-                            context="{'group_by': 'priority'}"/>
-                </group>
+                
+                <separator/>
+                
+                <filter string="Group By Page" name="group_account" 
+                        context="{'group_by': 'account_id'}"/>
+                <filter string="Group By Priority" name="group_priority" 
+                        context="{'group_by': 'priority'}"/>
             </search>
         </field>
     </record>
 
-    <!-- Action -->
+    <!-- ===================================================================== -->
+    <!-- ACTION                                                                -->
+    <!-- ===================================================================== -->
     <record id="action_social_chatbot_automation" model="ir.actions.act_window">
         <field name="name">Chatbot Automation</field>
         <field name="res_model">social.chatbot.automation</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="social_chatbot_automation_view_search"/>
+        <field name="context">{'search_default_filter_active': 1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Create your first chatbot automation rule!
@@ -106,10 +118,12 @@
         </field>
     </record>
 
-    <!-- Menu Item (thêm vào menu Social Facebook) -->
+    <!-- ===================================================================== -->
+    <!-- MENU ITEM                                                             -->
+    <!-- ===================================================================== -->
     <menuitem id="menu_social_chatbot_automation"
               name="Chatbot Automation"
-              parent="menu_social_facebook_configuration"
+              parent="menu_social_configuration"
               action="action_social_chatbot_automation"
               sequence="30"/>
 
