@@ -138,7 +138,12 @@ class FacebookWebhookController(http.Controller):
                 _logger.debug('⏭️ Skipping echo message')
                 return
             
-            self._handle_message(conversation, message_data, sender_id)
+            # Check for quick_reply (user clicked button)
+            if 'quick_reply' in message_data:
+                payload = message_data['quick_reply'].get('payload', '')
+                self._handle_quick_reply(conversation, payload, message_data.get('text', ''))
+            else:
+                self._handle_message(conversation, message_data, sender_id)
         
         # Handle postback
         elif 'postback' in event:
@@ -224,6 +229,20 @@ class FacebookWebhookController(http.Controller):
         # Check purchase intent for CRM lead
         self._check_purchase_intent(conversation, text)
     
+    def _handle_quick_reply(self, conversation, payload, text):
+        """
+        Xử lý khi user click Quick Reply button.
+        
+        Args:
+            conversation: social.message record
+            payload: Payload từ button (e.g., PRODUCT_123)
+            text: Text hiển thị trên button
+        """
+        _logger.info(f'🔘 Quick Reply received - payload: {payload}, text: {text}')
+        
+        # Process như một message bình thường với payload
+        self._process_chatbot_simple(conversation, payload)
+    
     def _handle_postback(self, conversation, postback_data, sender_id):
         """
         Xử lý postback từ button clicks.
@@ -244,7 +263,7 @@ class FacebookWebhookController(http.Controller):
         _logger.debug(f'👁️ Message read - watermark: {watermark}')
     
     # -------------------------------------------------------------------------
-    # ✅ CHATBOT - ĐƠN GIẢN HÓA THEO PHONG CÁCH FLASK
+    # ✅ CHATBOT - ĐƠN GIẢN HÓA THEO PHONG CÁCH FLASK + HIỂN THỊ SẢN PHẨM
     # -------------------------------------------------------------------------
     
     def _process_chatbot_simple(self, conversation, user_message):
@@ -253,8 +272,10 @@ class FacebookWebhookController(http.Controller):
         
         Flow:
         1. Check enabled
-        2. Tìm matching rule
-        3. Gửi reply TRỰC TIẾP qua Facebook API
+        2. Check nếu user chọn sản phẩm (PRODUCT_XXX)
+        3. Check keyword hiển thị sản phẩm
+        4. Tìm matching rule
+        5. Gửi reply TRỰC TIẾP qua Facebook API
         """
         # 1. Check enabled
         chatbot_enabled = request.env['ir.config_parameter'].sudo().get_param(
@@ -267,7 +288,19 @@ class FacebookWebhookController(http.Controller):
         
         _logger.info(f'🤖 Chatbot enabled, processing message: "{user_message[:50]}..."')
         
-        # 2. Tìm matching rule
+        # 2. ✅ Check nếu user chọn sản phẩm (payload PRODUCT_XXX)
+        if user_message.startswith('PRODUCT_'):
+            self._handle_product_selection(conversation, user_message)
+            return
+        
+        # 3. ✅ Check keyword hiển thị sản phẩm
+        show_products_keywords = ['sản phẩm', 'mua', 'xem hàng', 'giá', 'price', 'product', 'menu']
+        if any(kw in user_message.lower() for kw in show_products_keywords):
+            _logger.info('🛍️ User requested product list')
+            self._send_product_list(conversation)
+            return
+        
+        # 4. Tìm matching rule
         try:
             rules = request.env['social.chatbot.automation'].sudo().search([
                 ('active', '=', True),
@@ -282,7 +315,22 @@ class FacebookWebhookController(http.Controller):
                 if rule.check_match(user_message):
                     _logger.info(f'✅ Matched rule: {rule.name}')
                     
-                    # 3. GỬI REPLY TRỰC TIẾP (GIỐNG FLASK)
+                    # ✅ THÊM: Nếu rule response chứa [SHOW_PRODUCTS] → hiển thị SP
+                    if '[SHOW_PRODUCTS]' in rule.response_text:
+                        # Gửi text trước (bỏ [SHOW_PRODUCTS])
+                        text_only = rule.response_text.replace('[SHOW_PRODUCTS]', '').strip()
+                        if text_only:
+                            self._send_facebook_message_direct(
+                                recipient_id=conversation.facebook_user_id,
+                                text=text_only,
+                                access_token=conversation.account_id.access_token
+                            )
+                        # Sau đó hiển thị sản phẩm
+                        self._send_product_list(conversation)
+                        rule.mark_as_triggered()
+                        return
+                    
+                    # 5. GỬI REPLY TEXT THÔNG THƯỜNG (GIỐNG FLASK)
                     success = self._send_facebook_message_direct(
                         recipient_id=conversation.facebook_user_id,
                         text=rule.response_text,
@@ -308,6 +356,169 @@ class FacebookWebhookController(http.Controller):
             
         except Exception as e:
             _logger.error(f'❌ Chatbot processing error: {e}', exc_info=True)
+    
+    # -------------------------------------------------------------------------
+    # ✅ PRODUCT DISPLAY LOGIC
+    # -------------------------------------------------------------------------
+    
+    def _send_product_list(self, conversation):
+        """
+        Gửi danh sách sản phẩm với Quick Replies.
+        
+        Format:
+        - Text: Danh sách sản phẩm
+        - Quick Replies: Buttons để chọn sản phẩm
+        """
+        _logger.info(f'🛍️ Preparing product list for conversation {conversation.id}')
+        
+        # Lấy sản phẩm active
+        products = request.env['social.messenger.product'].sudo().search([
+            ('active', '=', True),
+            ('company_id', '=', conversation.company_id.id)
+        ], order='sequence, id')
+        
+        if not products:
+            _logger.warning('⚠️ No active products found')
+            self._send_facebook_message_direct(
+                recipient_id=conversation.facebook_user_id,
+                text='Xin lỗi, hiện tại chúng tôi chưa có sản phẩm nào. Vui lòng quay lại sau! 😊',
+                access_token=conversation.account_id.access_token
+            )
+            return False
+        
+        _logger.info(f'📦 Found {len(products)} active products')
+        
+        # Build product list text
+        product_list = "📦 **Danh sách sản phẩm của chúng tôi:**\n\n"
+        
+        for idx, product in enumerate(products, 1):
+            price_text = f"{product.price:,.0f} {product.currency_id.symbol}" if product.price > 0 else "Liên hệ"
+            product_list += f"{idx}. {product.product_id.name}\n"
+            product_list += f"   💰 Giá: {price_text}\n"
+            if product.description:
+                desc = product.description[:80] + '...' if len(product.description) > 80 else product.description
+                product_list += f"   📝 {desc}\n"
+            product_list += "\n"
+        
+        product_list += "👇 Vui lòng chọn sản phẩm bạn muốn mua:"
+        
+        # Build Quick Replies (Facebook limit: max 13 quick replies)
+        quick_replies = []
+        for product in products[:11]:  # Giữ 11 để có thể thêm option khác
+            title = product.quick_reply_title or product.product_id.name[:20]
+            quick_replies.append({
+                'content_type': 'text',
+                'title': title,
+                'payload': f'PRODUCT_{product.id}'
+            })
+        
+        # Optional: Thêm button "Xem thêm" hoặc "Hủy"
+        # quick_replies.append({
+        #     'content_type': 'text',
+        #     'title': '❌ Không mua',
+        #     'payload': 'CANCEL'
+        # })
+        
+        # Send message with Quick Replies
+        url = 'https://graph.facebook.com/v18.0/me/messages'
+        
+        payload = {
+            'recipient': {'id': conversation.facebook_user_id},
+            'message': {
+                'text': product_list,
+                'quick_replies': quick_replies
+            },
+            'messaging_type': 'RESPONSE'
+        }
+        
+        params = {'access_token': conversation.account_id.access_token}
+        
+        _logger.info(f'📤 Sending product list with {len(quick_replies)} quick replies')
+        
+        try:
+            response = requests.post(url, json=payload, params=params, timeout=10)
+            response.raise_for_status()
+            
+            result = response.json()
+            _logger.info(f'✅ Product list sent successfully: {result}')
+            return True
+            
+        except requests.exceptions.HTTPError as e:
+            try:
+                error_data = e.response.json().get('error', {})
+                error_msg = error_data.get('message', str(e))
+            except:
+                error_msg = str(e)
+            _logger.error(f'❌ Facebook API HTTP error: {error_msg}')
+            return False
+            
+        except Exception as e:
+            _logger.error(f'❌ Failed to send product list: {e}', exc_info=True)
+            return False
+    
+    def _handle_product_selection(self, conversation, payload):
+        """
+        Xử lý khi user chọn sản phẩm.
+        
+        Payload format: PRODUCT_123
+        """
+        _logger.info(f'🛒 Handling product selection: {payload}')
+        
+        try:
+            # Extract product ID
+            product_id = int(payload.replace('PRODUCT_', ''))
+            product = request.env['social.messenger.product'].sudo().browse(product_id)
+            
+            if not product.exists() or not product.active:
+                _logger.warning(f'⚠️ Product {product_id} not found or inactive')
+                self._send_facebook_message_direct(
+                    recipient_id=conversation.facebook_user_id,
+                    text='Xin lỗi, sản phẩm này hiện không còn bán. Vui lòng chọn sản phẩm khác. 😊',
+                    access_token=conversation.account_id.access_token
+                )
+                # Re-send product list
+                self._send_product_list(conversation)
+                return
+            
+            _logger.info(f'✅ Valid product selected: {product.product_id.name}')
+            
+            # Save selected product to conversation
+            if hasattr(conversation, 'selected_product_ids'):
+                # Add to many2many field if exists
+                conversation.sudo().write({
+                    'selected_product_ids': [(4, product.id)]
+                })
+            
+            # Build confirmation message
+            price_text = f"{product.price:,.0f} {product.currency_id.symbol}" if product.price > 0 else "Liên hệ"
+            
+            confirm_msg = f"""✅ Bạn đã chọn:
+
+📦 **{product.product_id.name}**
+💰 Giá: {price_text}
+
+"""
+            
+            if product.description:
+                confirm_msg += f"📝 {product.description}\n\n"
+            
+            confirm_msg += """Bạn có muốn đặt mua sản phẩm này không?
+
+👉 Trả lời "Có" hoặc "Đặt hàng" để xác nhận
+👉 Trả lời "Không" hoặc "Chọn lại" để xem lại sản phẩm"""
+            
+            self._send_facebook_message_direct(
+                recipient_id=conversation.facebook_user_id,
+                text=confirm_msg,
+                access_token=conversation.account_id.access_token
+            )
+            
+            _logger.info(f'✅ Product confirmation sent for product {product_id}')
+            
+        except ValueError:
+            _logger.error(f'❌ Invalid product payload: {payload}')
+        except Exception as e:
+            _logger.error(f'❌ Error handling product selection: {e}', exc_info=True)
     
     def _send_facebook_message_direct(self, recipient_id, text, access_token):
         """
@@ -372,7 +583,7 @@ class FacebookWebhookController(http.Controller):
         purchase_keywords = [
             'mua', 'đặt hàng', 'order', 'buy', 
             'muốn mua', 'đặt mua', 'book', 'booking',
-            'đặt', 'mua luôn', 'chốt đơn'
+            'đặt', 'mua luôn', 'chốt đơn', 'có'
         ]
         
         # Kiểm tra có keyword không
