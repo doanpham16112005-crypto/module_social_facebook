@@ -58,13 +58,19 @@ class SocialConversation(models.Model):
         help='Số điện thoại khách hàng',
     )
     
+    customer_email = fields.Char(
+        string='Customer Email',
+        tracking=True,
+        help='Email khách hàng',
+    )
+    
     # Conversation Status
     state = fields.Selection([
-        ('active', 'Active'),
-        ('in_progress', 'In Progress'),
+        ('new', 'New'),
+        ('ongoing', 'Ongoing'),
         ('resolved', 'Resolved'),
         ('closed', 'Closed'),
-    ], string='State', default='active', tracking=True)
+    ], string='State', default='new', tracking=True)
     
     # Timestamps
     last_message_date = fields.Datetime(
@@ -74,6 +80,23 @@ class SocialConversation(models.Model):
         tracking=True,
     )
     
+    # Tracking
+    last_message_from = fields.Selection([
+        ('customer', 'Customer'),
+        ('page', 'Page'),
+    ], string='Last Message From')
+    
+    unread_count = fields.Integer(
+        string='Unread Messages',
+        default=0,
+        help='Số tin nhắn chưa đọc từ khách hàng',
+    )
+    
+    first_response_time = fields.Float(
+        string='First Response Time (minutes)',
+        help='Thời gian phản hồi tin nhắn đầu tiên',
+    )
+    
     # Organization
     company_id = fields.Many2one(
         'res.company',
@@ -81,6 +104,11 @@ class SocialConversation(models.Model):
         default=lambda self: self.env.company,
         required=True,
         index=True,
+    )
+    
+    active = fields.Boolean(
+        string='Active',
+        default=True,
     )
     
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -110,6 +138,11 @@ class SocialConversation(models.Model):
         ondelete='set null',
         tracking=True,
         help='Lead được tạo từ conversation này khi có purchase intent',
+    )
+    
+    conversation_id = fields.Char(
+        string='Conversation ID',
+        help='Facebook Conversation ID (nếu có)',
     )
     
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -219,6 +252,7 @@ class SocialConversation(models.Model):
                 'type': 'opportunity',
                 'contact_name': self.customer_name,
                 'phone': self.customer_phone,
+                'email_from': self.customer_email,
                 'description': _(
                     "Lead created from Facebook Messenger conversation\n"
                     "Customer PSID: %s\n"
@@ -274,14 +308,75 @@ class SocialConversation(models.Model):
             _logger.info(f"✅ Created new lead {lead.id} from conversation {self.id}")
         
         # Cập nhật conversation state
-        if self.state == 'active':
-            self.write({'state': 'in_progress'})
+        if self.state == 'new':
+            self.write({'state': 'ongoing'})
         
         return lead
     
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ACTION METHODS
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    def action_create_lead(self):
+        """Tạo lead thủ công từ conversation"""
+        self.ensure_one()
+        
+        if self.lead_id:
+            raise UserError(_('Lead already exists for this conversation!'))
+        
+        # Tạo fake message để trigger lead creation
+        fake_message = self.env['social.message'].create({
+            'conversation_id': self.id,
+            'account_id': self.account_id.id,
+            'message': '[Manual lead creation from conversation]',
+            'is_from_customer': True,
+            'company_id': self.company_id.id,
+        })
+        
+        # Tạo lead
+        lead = self._create_or_update_lead(fake_message)
+        
+        # Xóa fake message
+        fake_message.unlink()
+        
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Lead Created'),
+            'res_model': 'crm.lead',
+            'res_id': lead.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+    
+    def action_mark_resolved(self):
+        """Đánh dấu conversation là đã giải quyết"""
+        for conv in self:
+            conv.write({'state': 'resolved'})
+            conv.message_post(
+                body=_('Conversation marked as resolved'),
+                message_type='notification',
+                subtype_xmlid='mail.mt_note'
+            )
+    
+    def action_close(self):
+        """Đóng conversation"""
+        for conv in self:
+            conv.write({'state': 'closed'})
+            conv.message_post(
+                body=_('Conversation closed'),
+                message_type='notification',
+                subtype_xmlid='mail.mt_note'
+            )
+    
+    def action_reopen(self):
+        """Mở lại conversation đã đóng"""
+        for conv in self:
+            conv.write({'state': 'ongoing'})
+            conv.message_post(
+                body=_('Conversation reopened'),
+                message_type='notification',
+                subtype_xmlid='mail.mt_note'
+            )
     
     def action_view_lead(self):
         """Xem CRM lead liên kết"""
@@ -299,36 +394,15 @@ class SocialConversation(models.Model):
             'target': 'current',
         }
     
-    def action_create_lead(self):
-        """Tạo lead thủ công"""
+    def action_view_messages(self):
+        """Xem tất cả messages trong conversation"""
         self.ensure_one()
         
-        if self.lead_id:
-            raise UserError(_('Lead already exists for this conversation'))
-        
-        # Tạo lead với message trigger giả
-        fake_message = self.env['social.message'].create({
-            'conversation_id': self.id,
-            'account_id': self.account_id.id,
-            'message': '[Manual lead creation]',
-            'is_from_customer': True,
-            'company_id': self.company_id.id,
-        })
-        
-        lead = self._create_or_update_lead(fake_message)
-        
         return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _('Success'),
-                'message': _('Lead created successfully!'),
-                'type': 'success',
-                'next': {
-                    'type': 'ir.actions.act_window',
-                    'res_model': 'crm.lead',
-                    'res_id': lead.id,
-                    'view_mode': 'form',
-                }
-            }
+            'type': 'ir.actions.act_window',
+            'name': _('Messages'),
+            'res_model': 'social.message',
+            'view_mode': 'tree,form',
+            'domain': [('conversation_id', '=', self.id)],
+            'context': {'default_conversation_id': self.id},
         }
