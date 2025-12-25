@@ -23,7 +23,7 @@
                     <group>
                         <group string="Customer Information">
                             <field name="customer_name"/>
-                            <field name="customer_psid"/>
+                            <field name="facebook_psid"/>
                             <field name="customer_phone"/>
                             <field name="customer_email"/>
                         </group>
