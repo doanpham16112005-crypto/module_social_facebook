@@ -48,7 +48,7 @@ class FacebookWebhookController(http.Controller):
         
         # Get verify token from settings
         verify_token = request.env['ir.config_parameter'].sudo().get_param(
-            'module_social_facebook.verify_token', '16112005'
+            'social_facebook.webhook_verify_token', '16112005'
         )
         
         _logger.info(f'Webhook verify attempt - mode: {mode}, token: {token}')
