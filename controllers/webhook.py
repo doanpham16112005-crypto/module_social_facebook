@@ -1,18 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-PATCH FOR: controllers/webhook.py
-
-HƯỚNG DẪN:
-1. Mở file controllers/webhook.py
-2. Tìm method _handle_message() (khoảng dòng 101-139)
-3. SAU dòng tạo msg_record, THÊM 2 dòng xử lý chatbot
-4. THÊM 3 method mới vào cuối class FacebookWebhookController
-
-HOẶC sử dụng code đầy đủ bên dưới để thay thế toàn bộ file.
-"""
 
 import json
 import logging
+import requests
 from odoo import http
 from odoo.http import request
 
@@ -48,16 +38,16 @@ class FacebookWebhookController(http.Controller):
         
         # Get verify token from settings
         verify_token = request.env['ir.config_parameter'].sudo().get_param(
-            'social_facebook.webhook_verify_token', '16112005'
+            'module_social_facebook.verify_token', '16112005'
         )
         
-        _logger.info(f'Webhook verify attempt - mode: {mode}, token: {token}')
+        _logger.info(f'🔔 Webhook verify attempt - mode: {mode}, token: {token}')
         
         if mode == 'subscribe' and token == verify_token:
-            _logger.info('Webhook verified successfully!')
+            _logger.info('✅ Webhook verified successfully!')
             return challenge
         else:
-            _logger.warning(f'Webhook verify failed - token mismatch')
+            _logger.warning(f'❌ Webhook verify failed - token mismatch')
             return 'Forbidden', 403
     
     @http.route('/social/facebook/webhook', type='http', auth='public', 
@@ -77,11 +67,11 @@ class FacebookWebhookController(http.Controller):
             body = request.httprequest.get_data(as_text=True)
             data = json.loads(body)
             
-            _logger.info(f'Received webhook data: {json.dumps(data, indent=2)}')
+            _logger.info(f'🔔 WEBHOOK RECEIVED: {json.dumps(data, indent=2)}')
             
             # Verify object type
             if data.get('object') != 'page':
-                _logger.warning(f'Unknown object type: {data.get("object")}')
+                _logger.warning(f'⚠️ Unknown object type: {data.get("object")}')
                 return 'OK'
             
             # Process each entry
@@ -91,7 +81,7 @@ class FacebookWebhookController(http.Controller):
             return 'OK'
             
         except Exception as e:
-            _logger.error(f'Error processing webhook: {e}', exc_info=True)
+            _logger.error(f'❌ Error processing webhook: {e}', exc_info=True)
             return 'OK'  # Always return 200 to Facebook
     
     def _process_entry(self, entry):
@@ -127,14 +117,28 @@ class FacebookWebhookController(http.Controller):
         recipient_id = event.get('recipient', {}).get('id')
         
         if not sender_id or not recipient_id:
+            _logger.warning('⚠️ Missing sender_id or recipient_id')
             return
+        
+        _logger.info(f'📨 Processing event from {sender_id} to {recipient_id}')
         
         # Find or create conversation
         conversation = self._find_or_create_conversation(sender_id, recipient_id)
         
+        if not conversation:
+            _logger.error(f'❌ Failed to find/create conversation')
+            return
+        
         # Handle message
         if 'message' in event:
-            self._handle_message(conversation, event['message'], sender_id)
+            message_data = event['message']
+            
+            # Skip echo messages
+            if message_data.get('is_echo'):
+                _logger.debug('⏭️ Skipping echo message')
+                return
+            
+            self._handle_message(conversation, message_data, sender_id)
         
         # Handle postback
         elif 'postback' in event:
@@ -176,13 +180,14 @@ class FacebookWebhookController(http.Controller):
         
         Actions:
         1. Lưu message vào database
-        2. Check chatbot flow
-        3. Auto-reply nếu cần
-        4. Check purchase intent cho CRM
+        2. Xử lý chatbot (GIỐNG FLASK - ĐƠN GIẢN)
+        3. Check purchase intent cho CRM
         """
         mid = message_data.get('mid')
         text = message_data.get('text', '')
         attachments = message_data.get('attachments', [])
+        
+        _logger.info(f'📨 Processing message: "{text[:100]}..."')
         
         # Check duplicate
         existing = request.env['social.message'].sudo().search([
@@ -190,12 +195,11 @@ class FacebookWebhookController(http.Controller):
         ], limit=1)
         
         if existing:
-            _logger.debug(f'Message {mid} already exists')
+            _logger.debug(f'⏭️ Message {mid} already exists')
             return
         
         # Create message record
         message_vals = {
-            'conversation_id': conversation.id if hasattr(conversation, 'conversation_id') else False,
             'message_id': mid,
             'message': text,
             'is_from_customer': True,
@@ -207,18 +211,18 @@ class FacebookWebhookController(http.Controller):
         if attachments:
             message_vals['attachments'] = json.dumps(attachments)
         
-        msg_record = request.env['social.message'].sudo().create(message_vals)
+        try:
+            msg_record = request.env['social.message'].sudo().create(message_vals)
+            _logger.info(f'✅ Created message record: {msg_record.id}')
+        except Exception as e:
+            _logger.error(f'❌ Failed to create message: {e}')
+            return
         
-        _logger.info(f'Created message {msg_record.id} for conversation {conversation.id}')
+        # ✅ XỬ LÝ CHATBOT - ĐƠN GIẢN THEO PHONG CÁCH FLASK
+        self._process_chatbot_simple(conversation, text)
         
-        # ✅ THÊM MỚI: Process chatbot flow
-        self._process_chatbot(conversation, text)
-        
-        # ✅ THÊM MỚI: Check purchase intent for CRM lead
+        # Check purchase intent for CRM lead
         self._check_purchase_intent(conversation, text)
-        
-        # Auto-create lead if enabled (legacy support)
-        self._auto_create_lead(conversation)
     
     def _handle_postback(self, conversation, postback_data, sender_id):
         """
@@ -229,48 +233,130 @@ class FacebookWebhookController(http.Controller):
         payload = postback_data.get('payload', '')
         title = postback_data.get('title', '')
         
-        _logger.info(f'Postback received - payload: {payload}, title: {title}')
+        _logger.info(f'🔘 Postback received - payload: {payload}, title: {title}')
         
         # Process as chatbot message (treat payload as user input)
-        self._process_chatbot(conversation, payload)
+        self._process_chatbot_simple(conversation, payload)
     
     def _handle_read(self, conversation, read_data):
         """Handle read receipts"""
         watermark = read_data.get('watermark')
-        _logger.debug(f'Message read - watermark: {watermark}')
-        # Optional: Update message read status
+        _logger.debug(f'👁️ Message read - watermark: {watermark}')
     
     # -------------------------------------------------------------------------
-    # ✅ THÊM MỚI: CHATBOT FLOW PROCESSING
+    # ✅ CHATBOT - ĐƠN GIẢN HÓA THEO PHONG CÁCH FLASK
     # -------------------------------------------------------------------------
     
-    def _process_chatbot(self, conversation, user_message):
+    def _process_chatbot_simple(self, conversation, user_message):
         """
-        Xử lý chatbot flow.
+        Xử lý chatbot THEO PHONG CÁCH FLASK - ĐƠN GIẢN, TRỰC TIẾP
         
-        Gọi conversation.process_chatbot_flow() và gửi reply.
+        Flow:
+        1. Check enabled
+        2. Tìm matching rule
+        3. Gửi reply TRỰC TIẾP qua Facebook API
         """
+        # 1. Check enabled
         chatbot_enabled = request.env['ir.config_parameter'].sudo().get_param(
             'module_social_facebook.chatbot_enabled', 'False'
         )
         
         if chatbot_enabled != 'True':
+            _logger.info('⚠️ Chatbot disabled')
             return
         
+        _logger.info(f'🤖 Chatbot enabled, processing message: "{user_message[:50]}..."')
+        
+        # 2. Tìm matching rule
         try:
-            # Process chatbot logic
-            response = conversation.process_chatbot_flow(user_message)
+            rules = request.env['social.chatbot.automation'].sudo().search([
+                ('active', '=', True),
+                '|',
+                ('account_id', '=', False),
+                ('account_id', '=', conversation.account_id.id)
+            ], order='priority desc, id')
             
-            if response:
-                # Send message
-                conversation.send_chatbot_message(response)
-                _logger.info(f'✅ Chatbot response sent for conversation {conversation.id}')
-                
+            _logger.info(f'📋 Found {len(rules)} active chatbot rules')
+            
+            for rule in rules:
+                if rule.check_match(user_message):
+                    _logger.info(f'✅ Matched rule: {rule.name}')
+                    
+                    # 3. GỬI REPLY TRỰC TIẾP (GIỐNG FLASK)
+                    success = self._send_facebook_message_direct(
+                        recipient_id=conversation.facebook_user_id,
+                        text=rule.response_text,
+                        access_token=conversation.account_id.access_token
+                    )
+                    
+                    if success:
+                        # Mark rule as triggered
+                        try:
+                            rule.sudo().write({
+                                'triggered_count': rule.triggered_count + 1,
+                                'last_triggered_date': request.env['ir.fields'].datetime.now(),
+                            })
+                        except:
+                            pass
+                        
+                        _logger.info(f'✅ Chatbot reply sent successfully')
+                        return
+                    else:
+                        _logger.error(f'❌ Failed to send chatbot reply')
+            
+            _logger.info('⚠️ No matching chatbot rule found')
+            
         except Exception as e:
-            _logger.error(f'❌ Chatbot error: {e}', exc_info=True)
+            _logger.error(f'❌ Chatbot processing error: {e}', exc_info=True)
+    
+    def _send_facebook_message_direct(self, recipient_id, text, access_token):
+        """
+        Gửi tin nhắn TRỰC TIẾP qua Facebook API - GIỐNG FLASK
+        
+        Args:
+            recipient_id: Facebook PSID
+            text: Nội dung tin nhắn
+            access_token: Page Access Token
+        
+        Returns:
+            bool: True nếu thành công, False nếu thất bại
+        """
+        url = 'https://graph.facebook.com/v18.0/me/messages'
+        
+        payload = {
+            'recipient': {'id': recipient_id},
+            'message': {'text': text},
+            'messaging_type': 'RESPONSE'
+        }
+        
+        params = {'access_token': access_token}
+        
+        _logger.info(f'📤 Sending message to {recipient_id}: "{text[:50]}..."')
+        
+        try:
+            response = requests.post(url, json=payload, params=params, timeout=10)
+            response.raise_for_status()
+            
+            result = response.json()
+            _logger.info(f'✅ Facebook API response: {result}')
+            
+            return True
+            
+        except requests.exceptions.HTTPError as e:
+            try:
+                error_data = e.response.json().get('error', {})
+                error_msg = error_data.get('message', str(e))
+            except:
+                error_msg = str(e)
+            _logger.error(f'❌ Facebook API HTTP error: {error_msg}')
+            return False
+            
+        except Exception as e:
+            _logger.error(f'❌ Facebook API error: {e}', exc_info=True)
+            return False
     
     # -------------------------------------------------------------------------
-    # ✅ THÊM MỚI: PURCHASE INTENT & CRM INTEGRATION
+    # PURCHASE INTENT & CRM INTEGRATION
     # -------------------------------------------------------------------------
     
     def _check_purchase_intent(self, conversation, user_message):
@@ -317,7 +403,7 @@ class FacebookWebhookController(http.Controller):
         Lead = request.env['crm.lead'].sudo()
         
         # Check nếu đã có lead
-        if conversation.lead_id:
+        if hasattr(conversation, 'lead_id') and conversation.lead_id:
             # Update existing lead
             lead = conversation.lead_id
             
@@ -330,39 +416,22 @@ class FacebookWebhookController(http.Controller):
                 subtype_xmlid='mail.mt_comment'
             )
             
-            # Update stage nếu chưa won/lost
-            if lead.probability < 100 and lead.probability != 0:
-                qualified_stage = request.env['crm.stage'].sudo().search([
-                    '|',
-                    ('name', 'ilike', 'qualified'),
-                    ('name', 'ilike', 'qualification')
-                ], limit=1)
-                
-                if qualified_stage:
-                    lead.write({
-                        'stage_id': qualified_stage.id,
-                        'probability': 60,
-                    })
-            
             _logger.info(f"✅ Updated existing lead {lead.id}")
             return lead
         
         # Tạo lead mới
         lead_vals = {
-            'name': f'Facebook Lead - {conversation.customer_name or conversation.facebook_user_id}',
+            'name': f'Facebook Lead - {conversation.facebook_user_id}',
             'type': 'opportunity',
-            'contact_name': conversation.customer_name,
-            'phone': conversation.customer_phone,
             'description': f"""
 Lead from Facebook Messenger Conversation
 
 PSID: {conversation.facebook_user_id}
 Trigger Message: "{trigger_message}"
-Created at: {request.env.cr.now()}
 
 Customer Info:
-- Name: {conversation.customer_name or 'Unknown'}
-- Phone: {conversation.customer_phone or 'Unknown'}
+- Name: {getattr(conversation, 'customer_name', 'Unknown')}
+- Phone: {getattr(conversation, 'customer_phone', 'Unknown')}
             """,
             'company_id': conversation.company_id.id,
         }
@@ -375,22 +444,15 @@ Customer Info:
             source = request.env['utm.source'].sudo().create({'name': 'Facebook'})
         lead_vals['source_id'] = source.id
         
-        # Tìm stage "Qualified"
-        qualified_stage = request.env['crm.stage'].sudo().search([
-            '|',
-            ('name', 'ilike', 'qualified'),
-            ('name', 'ilike', 'new')
-        ], limit=1)
-        
-        if qualified_stage:
-            lead_vals['stage_id'] = qualified_stage.id
-            lead_vals['probability'] = 60 if 'qualified' in qualified_stage.name.lower() else 20
-        
         # Tạo lead
         lead = Lead.create(lead_vals)
         
-        # Link lead với conversation
-        conversation.sudo().write({'lead_id': lead.id})
+        # Link lead với conversation (nếu có field)
+        if hasattr(conversation, 'lead_id'):
+            try:
+                conversation.sudo().write({'lead_id': lead.id})
+            except:
+                pass
         
         _logger.info(f"✅ Created new lead {lead.id} from conversation {conversation.id}")
         
@@ -401,120 +463,10 @@ Customer Info:
     # -------------------------------------------------------------------------
     
     def _handle_leadgen_event(self, leadgen_data):
-        """
-        Xử lý lead form submissions từ Facebook Lead Ads.
-        """
-        leadgen_id = leadgen_data.get('leadgen_id')
-        page_id = leadgen_data.get('page_id')
-        
-        if not leadgen_id or not page_id:
-            _logger.warning('Missing leadgen_id or page_id')
-            return
-        
-        # Find Facebook account
-        account = request.env['social.account'].sudo().search([
-            ('facebook_id', '=', page_id)
-        ], limit=1)
-        
-        if not account or not account.access_token:
-            _logger.error(f'No account found for page {page_id}')
-            return
-        
-        # Fetch lead data from Graph API
-        try:
-            from odoo.addons.module_social_facebook.lib import facebook_api
-            api = facebook_api.FacebookAPI(account.access_token)
-            
-            lead_data = api.get_leadgen_data(leadgen_id)
-            
-            # Parse field data
-            field_data = {}
-            for field in lead_data.get('field_data', []):
-                field_name = field.get('name')
-                field_value = field.get('values', [None])[0]
-                field_data[field_name] = field_value
-            
-            # Extract common fields
-            name = field_data.get('full_name') or field_data.get('first_name', 'Unknown')
-            phone = field_data.get('phone_number') or field_data.get('phone')
-            email = field_data.get('email')
-            
-            # Check duplicate
-            existing_lead = request.env['crm.lead'].sudo().search([
-                ('phone', '=', phone),
-                ('type', '=', 'lead'),
-            ], limit=1)
-            
-            if existing_lead:
-                _logger.info(f'Lead already exists for phone {phone}')
-                existing_lead.message_post(
-                    body=f'Duplicate lead form submission from Facebook: {leadgen_id}'
-                )
-                return
-            
-            # Create crm.lead
-            lead_vals = {
-                'name': f'Facebook Lead: {name}',
-                'contact_name': name,
-                'phone': phone,
-                'email_from': email,
-                'type': 'lead',
-                'source_id': self._get_facebook_source(),
-                'description': f'Lead from Facebook Lead Ads\nForm ID: {leadgen_data.get("form_id")}\nLead ID: {leadgen_id}\n\nFields:\n{json.dumps(field_data, indent=2)}',
-                'company_id': account.company_id.id,
-            }
-            
-            lead = request.env['crm.lead'].sudo().create(lead_vals)
-            
-            _logger.info(f'Created lead {lead.id} from Facebook leadgen {leadgen_id}')
-            
-        except Exception as e:
-            _logger.error(f'Failed to process leadgen {leadgen_id}: {e}', exc_info=True)
-    
-    def _get_facebook_source(self):
-        """Get or create Facebook source"""
-        Source = request.env['utm.source'].sudo()
-        source = Source.search([('name', '=', 'Facebook')], limit=1)
-        if not source:
-            source = Source.create({'name': 'Facebook'})
-        return source.id
-    
-    # -------------------------------------------------------------------------
-    # AUTO LEAD CREATION (LEGACY)
-    # -------------------------------------------------------------------------
-    
-    def _auto_create_lead(self, conversation):
-        """
-        Tự động tạo lead từ conversation nếu enabled.
-        
-        Conditions:
-        - auto_create_lead = True
-        - Conversation chưa có lead_id
-        - Có đủ thông tin (name, phone)
-        """
-        auto_create = request.env['ir.config_parameter'].sudo().get_param(
-            'module_social_facebook.auto_create_lead', 'False'
-        )
-        
-        if auto_create != 'True':
-            return
-        
-        if conversation.lead_id:
-            return  # Already has lead
-        
-        if not conversation.customer_name or not conversation.customer_phone:
-            return  # Not enough info
-        
-        try:
-            lead = conversation.create_lead_from_conversation()
-            if lead:
-                _logger.info(f'Auto-created lead {lead.id} from conversation {conversation.id}')
-        except Exception as e:
-            _logger.error(f'Failed to auto-create lead: {e}')
-    
-    # -------------------------------------------------------------------------
-    # FEED/COMMENT HANDLERS
-    # -------------------------------------------------------------------------
+        """Xử lý lead form submissions từ Facebook Lead Ads"""
+        _logger.info(f'📋 Leadgen event received: {leadgen_data}')
+        # TODO: Implement leadgen handling
+        pass
     
     def _handle_feed_event(self, feed_data):
         """Handle post events"""
@@ -531,15 +483,27 @@ Customer Info:
     def _find_or_create_conversation(self, sender_id, recipient_id):
         """
         Tìm hoặc tạo conversation.
+        
+        Args:
+            sender_id: Facebook PSID của user
+            recipient_id: Facebook Page ID
+        
+        Returns:
+            social.message record (đại diện conversation) hoặc None
         """
-        # ✅ SỬA: Đổi 'facebook_id' → 'facebook_page_id'
+        _logger.info(f'🔍 Finding conversation for user {sender_id}, page {recipient_id}')
+        
+        # ✅ FIX: Đổi 'facebook_id' → 'facebook_page_id'
         account = request.env['social.account'].sudo().search([
-            ('facebook_page_id', '=', recipient_id)  # ← DÒNG NÀY
+            ('facebook_page_id', '=', recipient_id)
         ], limit=1)
         
         if not account:
-            _logger.error(f'No account found for page {recipient_id}')
+            _logger.error(f'❌ No account found for page {recipient_id}')
+            _logger.error(f'   Please add this Facebook Page in Odoo first!')
             return None
+        
+        _logger.info(f'✅ Found account: {account.name} (ID: {account.id})')
         
         # Find existing conversation
         conversation = request.env['social.message'].sudo().search([
@@ -548,6 +512,7 @@ Customer Info:
         ], limit=1)
         
         if conversation:
+            _logger.info(f'✅ Found existing conversation: {conversation.id}')
             return conversation
         
         # Create new conversation
@@ -555,11 +520,16 @@ Customer Info:
             'facebook_user_id': sender_id,
             'account_id': account.id,
             'company_id': account.company_id.id,
-            'chatbot_state': 'idle',
         }
         
-        conversation = request.env['social.message'].sudo().create(conv_vals)
+        # Add chatbot_state if field exists
+        if 'chatbot_state' in request.env['social.message']._fields:
+            conv_vals['chatbot_state'] = 'idle'
         
-        _logger.info(f'Created new conversation {conversation.id} for user {sender_id}')
-        
-        return conversation
+        try:
+            conversation = request.env['social.message'].sudo().create(conv_vals)
+            _logger.info(f'✅ Created new conversation: {conversation.id} for user {sender_id}')
+            return conversation
+        except Exception as e:
+            _logger.error(f'❌ Failed to create conversation: {e}', exc_info=True)
+            return None
