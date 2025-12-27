@@ -251,17 +251,27 @@ Cảm ơn bạn! 🙏""" % (
             self._state_idle(conv, msg)
     
     # =========================================================================
-    # BUSINESS LOGIC
+    # ✅ BUSINESS LOGIC - TẠO SALE ORDER VỚI PARTNER
     # =========================================================================
     
     def _create_sale_order_directly(self, conv):
-        """Tạo sale order trực tiếp"""
-        # Find/create partner
+        """
+        ✅ TẠO SALE ORDER với Partner có tag Facebook
+        
+        Flow:
+        1. Tìm/tạo partner (person, tag Facebook)
+        2. Tạo sale order với partner
+        3. Thêm order lines
+        4. Ghi chú vào chatter
+        """
+        # ✅ Step 1: Find or create partner
         partner = self._find_or_create_partner(conv)
         
-        # Create sale order
+        _logger.info('✅ Partner for order: %s (ID: %s)', partner.name, partner.id)
+        
+        # ✅ Step 2: Create sale order
         sale_vals = {
-            'partner_id': partner.id,
+            'partner_id': partner.id,  # ✅ GẮN PARTNER VÀO ORDER
             'company_id': conv.company_id.id,
             'date_order': fields.Datetime.now(),
             'origin': 'Facebook Messenger - %s' % conv.facebook_user_id,
@@ -277,7 +287,10 @@ Cảm ơn bạn! 🙏""" % (
         
         sale_order = request.env['sale.order'].sudo().create(sale_vals)
         
-        # Add order lines
+        _logger.info('✅ Created sale.order: %s for partner: %s', 
+                     sale_order.name, partner.name)
+        
+        # ✅ Step 3: Add order lines
         for product in conv.selected_product_ids:
             line_vals = {
                 'order_id': sale_order.id,
@@ -286,11 +299,17 @@ Cảm ơn bạn! 🙏""" % (
                 'price_unit': product.price,
             }
             request.env['sale.order.line'].sudo().create(line_vals)
+            
+            _logger.info('  ➕ Added product: %s - %s đ', 
+                        product.product_id.name, product.price)
         
-        # Add chatter note
+        # ✅ Step 4: Add note to chatter
         sale_order.message_post(
-            body='Đơn hàng tạo từ Facebook Messenger chatbot\n'
-                 'Khách hàng: %s\nSĐT: %s\nPSID: %s' % (
+            body='🤖 Đơn hàng tạo từ Facebook Messenger chatbot\n'
+                 '👤 Khách hàng: %s\n'
+                 '📞 SĐT: %s\n'
+                 '🆔 PSID: %s\n'
+                 '🏷️ Tag: Facebook' % (
                      conv.customer_name,
                      conv.customer_phone,
                      conv.facebook_user_id
@@ -303,10 +322,23 @@ Cảm ơn bạn! 🙏""" % (
         return sale_order
     
     def _find_or_create_partner(self, conv):
-        """Tìm/tạo partner"""
+        """
+        ✅ TÌM hoặc TẠO RES.PARTNER với đầy đủ yêu cầu:
+        
+        1. Tìm theo SĐT trước
+        2. Nếu không có → tạo mới
+        3. Partner mới có:
+           - company_type = 'person' (không phải company)
+           - Tag 'Facebook'
+           - Tên + SĐT từ conversation
+           - PSID lưu vào comment
+        
+        Returns:
+            res.partner: Partner record
+        """
         Partner = request.env['res.partner'].sudo()
         
-        # Search by phone
+        # ✅ BƯỚC 1: TÌM PARTNER THEO SĐT
         if conv.customer_phone:
             partner = Partner.search([
                 ('phone', '=', conv.customer_phone),
@@ -314,18 +346,100 @@ Cảm ơn bạn! 🙏""" % (
             ], limit=1)
             
             if partner:
+                _logger.info('✅ Found existing partner: %s (ID: %s) by phone', 
+                            partner.name, partner.id)
+                
+                # ✅ Đảm bảo partner có tag Facebook
+                self._ensure_facebook_tag(partner)
+                
                 return partner
         
-        # Create new partner
+        # ✅ BƯỚC 2: TẠO PARTNER MỚI
+        _logger.info('🆕 Creating new partner: %s - %s', 
+                    conv.customer_name, conv.customer_phone)
+        
+        # ✅ Get Facebook tag
+        facebook_tag = self._get_or_create_facebook_tag()
+        
+        # ✅ Prepare partner values
         partner_vals = {
+            # Basic info
             'name': conv.customer_name,
             'phone': conv.customer_phone,
             'company_id': conv.company_id.id,
-            'comment': 'Created from Facebook Messenger\nPSID: %s' % conv.facebook_user_id,
+            
+            # ✅ YÊU CẦU 1: company_type = 'person'
+            'company_type': 'person',
+            
+            # ✅ YÊU CẦU 2: Tag 'Facebook'
+            'category_id': [(6, 0, [facebook_tag.id])],
+            
+            # Additional info
+            'comment': 'Tạo từ Facebook Messenger chatbot\n'
+                      'PSID: %s\n'
+                      'Ngày tạo: %s' % (
+                          conv.facebook_user_id,
+                          fields.Datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                      ),
         }
         
+        # ✅ Thêm facebook_user_id nếu field tồn tại
+        if 'facebook_user_id' in Partner._fields:
+            partner_vals['facebook_user_id'] = conv.facebook_user_id
+        
+        # ✅ Tạo partner
         partner = Partner.create(partner_vals)
+        
+        _logger.info('✅ Created new partner: %s (ID: %s) with tag Facebook', 
+                    partner.name, partner.id)
+        
         return partner
+    
+    def _get_or_create_facebook_tag(self):
+        """
+        ✅ LẤY hoặc TẠO TAG 'Facebook'
+        
+        Returns:
+            res.partner.category: Facebook tag
+        """
+        Tag = request.env['res.partner.category'].sudo()
+        
+        # Tìm tag 'Facebook' (case-insensitive)
+        tag = Tag.search([
+            ('name', '=ilike', 'Facebook')
+        ], limit=1)
+        
+        if tag:
+            _logger.debug('✅ Found existing tag: Facebook (ID: %s)', tag.id)
+            return tag
+        
+        # Tạo tag mới nếu chưa có
+        tag = Tag.create({
+            'name': 'Facebook',
+            'color': 1,  # Blue color
+        })
+        
+        _logger.info('🆕 Created new tag: Facebook (ID: %s)', tag.id)
+        
+        return tag
+    
+    def _ensure_facebook_tag(self, partner):
+        """
+        ✅ ĐẢM BẢO partner có tag Facebook
+        
+        Nếu partner đã tồn tại nhưng chưa có tag → thêm tag
+        
+        Args:
+            partner (res.partner): Partner record
+        """
+        facebook_tag = self._get_or_create_facebook_tag()
+        
+        # Kiểm tra xem đã có tag chưa
+        if facebook_tag not in partner.category_id:
+            partner.write({
+                'category_id': [(4, facebook_tag.id)]  # Add tag
+            })
+            _logger.info('✅ Added Facebook tag to existing partner: %s', partner.name)
     
     # =========================================================================
     # HELPER METHODS
