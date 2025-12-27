@@ -50,12 +50,12 @@ class FacebookAPI:
         return response.json()
     
     # -------------------------------------------------------------------------
-    # MESSENGER SEND API
+    # ✅ MESSENGER SEND API - FIXED
     # -------------------------------------------------------------------------
     
     def send_message(self, recipient_id, message_text):
         """
-        Send text message via Messenger Send API.
+        ✅ FIX: Send text message via Messenger Send API.
         
         Args:
             recipient_id (str): PSID of recipient
@@ -82,17 +82,39 @@ class FacebookAPI:
         try:
             response = requests.post(url, json=payload, params=params, timeout=30)
             response.raise_for_status()
-            result = response.json()
             
-            _logger.info(f"✅ Message sent to {recipient_id}: {result.get('message_id')}")
-            return result
+            # ✅ FIX: Parse JSON an toàn
+            try:
+                result = response.json()
+                
+                # ✅ Check result là dict
+                if isinstance(result, dict):
+                    message_id = result.get('message_id', 'N/A')
+                    _logger.info(f"✅ Message sent to {recipient_id}: {message_id}")
+                else:
+                    # Result là list hoặc kiểu khác
+                    _logger.info(f"✅ Message sent to {recipient_id}")
+                    result = {'success': True}
+                
+                return result
+                
+            except Exception as json_error:
+                _logger.warning(f"⚠️ JSON parse warning: {json_error}")
+                return {'success': True}
             
         except requests.exceptions.HTTPError as e:
+            # ✅ FIX: Handle HTTP errors
             try:
-                error_data = e.response.json().get('error', {})
-                error_msg = error_data.get('message', str(e))
+                error_data = e.response.json()
+                
+                # ✅ Check error_data type
+                if isinstance(error_data, dict):
+                    error_msg = error_data.get('error', {}).get('message', str(e))
+                else:
+                    error_msg = str(e)
             except:
                 error_msg = str(e)
+            
             _logger.error(f"❌ Facebook API Error: {error_msg}")
             raise Exception(f"Facebook API Error: {error_msg}")
             

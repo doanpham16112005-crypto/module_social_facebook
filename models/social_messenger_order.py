@@ -33,7 +33,7 @@ class SocialMessengerOrder(models.Model):
         tracking=True,
     )
     conversation_id = fields.Many2one(
-        'social.message',  # Link tới conversation
+        'social.message',
         string='Conversation',
         ondelete='set null',
         help='Cuộc hội thoại Messenger tạo ra đơn hàng này',
@@ -137,7 +137,6 @@ class SocialMessengerOrder(models.Model):
             if record.sale_order_id:
                 record.total_amount = record.sale_order_id.amount_total
             else:
-                # Tính tổng từ products
                 total = sum(record.product_ids.mapped('price'))
                 record.total_amount = total
     
@@ -184,7 +183,7 @@ class SocialMessengerOrder(models.Model):
             line_vals = {
                 'order_id': sale_order.id,
                 'product_id': product.product_id.id,
-                'product_uom_qty': 1,  # Default quantity
+                'product_uom_qty': 1,
                 'price_unit': product.price,
             }
             self.env['sale.order.line'].create(line_vals)
@@ -260,7 +259,7 @@ class SocialMessengerOrder(models.Model):
     
     def send_order_confirmation(self):
         """
-        Gửi tin nhắn xác nhận đơn hàng qua Messenger.
+        ✅ FIX: Gửi tin nhắn xác nhận đơn hàng qua Messenger
         
         Message format:
         ✅ Đơn hàng #{name} đã được xác nhận!
@@ -292,7 +291,6 @@ Cảm ơn bạn đã mua hàng."""
         
         # Send via Messenger API
         try:
-            # Get Facebook API wrapper
             from odoo.addons.module_social_facebook.lib import facebook_api
             
             # Get page access token from conversation's account
@@ -303,13 +301,13 @@ Cảm ơn bạn đã mua hàng."""
             
             api = facebook_api.FacebookAPI(account.access_token)
             
-            # Send message
+            # ✅ FIX: Gọi send_message với 2 tham số riêng
             api.send_message(
                 recipient_id=self.facebook_user_id,
-                message={'text': message}
+                message_text=message  # ← FIX: Truyền text, không phải dict
             )
             
-            _logger.info(f'Sent order confirmation for {self.name} to {self.facebook_user_id}')
+            _logger.info(f'✅ Sent order confirmation for {self.name} to {self.facebook_user_id}')
             
             # Log to chatter
             self.message_post(
@@ -318,7 +316,7 @@ Cảm ơn bạn đã mua hàng."""
             )
             
         except Exception as e:
-            _logger.error(f'Failed to send confirmation for order {self.name}: {e}')
+            _logger.error(f'❌ Failed to send confirmation for order {self.name}: {e}', exc_info=True)
             self.message_post(
                 body=_('Failed to send confirmation: %s') % str(e),
                 subject=_('Error'),
@@ -375,7 +373,6 @@ Cảm ơn bạn đã mua hàng."""
 # -------------------------------------------------------------------------
 # EXTEND res.partner (OPTIONAL)
 # -------------------------------------------------------------------------
-# Thêm field facebook_user_id vào res.partner để tracking
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'
