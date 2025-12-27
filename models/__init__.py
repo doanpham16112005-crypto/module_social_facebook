@@ -12,4 +12,4 @@ from . import social_messenger_order
 from . import social_messenger_product
 from . import social_post
 from . import social_post_template
-from . import social_chatbot_automation  # ← THÊM DÒNG NÀY
+from . import social_chatbot_automation

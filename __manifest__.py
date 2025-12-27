@@ -26,13 +26,6 @@ NEW Features (v2.0):
 * ✨ Webhook Configuration UI
 * ✨ Messenger Product Catalog
 * ✨ Sale Order Integration
-
-Technical Requirements:
------------------------
-* Odoo 19.0+
-* Python 3.10+
-* Facebook Graph API v18.0+
-* Ngrok (optional, for localhost webhooks)
     """,
     'author': 'Your Company',
     'website': 'https://www.yourcompany.com',
@@ -41,56 +34,29 @@ Technical Requirements:
         'base',
         'mail',
         'web',
-        'crm',              # NEW - CRM integration
-        'sale_management',  # NEW - Sales integration
-        'product',          # NEW - Product catalog
+        'crm',
+        'sale_management',
+        'product',
     ],
     'data': [
         # Security
         'security/social_security.xml',
         'security/ir.model.access.csv',
         
-        # Data
-        'data/user_groups_data.xml',
+        # Data - CHỈ GIỮ FILE TỒN TẠI
         'data/ir_cron_data.xml',
-        'data/mail_template_data.xml',
-        'data/facebook_post_template_data.xml',
-        'data/chatbot_data.xml',
         
-        # Views - ⚠️ ACTIONS TRƯỚC, MENU SAU
-        'views/dashboard_views.xml',
+        # Views - CHỈ GIỮ FILE TỒN TẠI
         'views/social_account_views.xml',
         'views/social_post_views.xml',
-        'views/social_post_calendar_views.xml',
-        'views/social_post_template_views.xml',
         'views/social_comment_views.xml',
-        'views/social_analytics_views.xml',
         'views/social_conversation_views.xml',
         'views/social_message_views.xml',
         'views/social_messenger_product_views.xml',
         'views/social_messenger_order_views.xml',
-        'views/social_chatbot_automation_views.xml',
-        'views/menu_views.xml',  # ← MENU PHẢI Ở CUỐI
-        
-        # Wizards
-        'wizard/wizard_views.xml',
-    ],  
-    'assets': {
-        'web.assets_backend': [
-            'module_social_facebook/static/src/css/social_facebook.css',
-            'module_social_facebook/static/src/js/social_dashboard.js',
-            'module_social_facebook/static/src/js/social_conversation_list.js',
-            'module_social_facebook/static/src/js/ngrok_controller.js',  # NEW
-        ],
-        'web.assets_qweb': [
-            'module_social_facebook/static/src/xml/social_conversation_templates.xml',
-        ],
-    },
-    'external_dependencies': {
-        'python': ['requests'],
-    },
+        'views/menu_views.xml',
+    ],
     'installable': True,
     'application': True,
     'auto_install': False,
-    'post_init_hook': 'post_init_hook',
 }

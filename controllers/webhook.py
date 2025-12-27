@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-WEBHOOK DEBUG VERSION
-=====================
-Thêm extensive logging để tìm lỗi thật
+WEBHOOK CONTROLLER - PRODUCTION VERSION
+========================================
+Fixed all f-string syntax errors
 """
 
 import json
@@ -31,10 +31,10 @@ class FacebookWebhookController(http.Controller):
         )
         
         if mode == 'subscribe' and token == verify_token:
-            _logger.info('✅ Webhook verified')
+            _logger.info('Webhook verified')
             return challenge
         else:
-            _logger.warning('❌ Webhook verify failed')
+            _logger.warning('Webhook verify failed')
             return 'Forbidden', 403
     
     @http.route('/social/facebook/webhook', type='http', auth='public', 
@@ -54,7 +54,7 @@ class FacebookWebhookController(http.Controller):
             return 'OK'
             
         except Exception as e:
-            _logger.error(f'❌ Webhook error: {e}', exc_info=True)
+            _logger.error('Webhook error: %s', e, exc_info=True)
             return 'OK'
     
     def _process_entry(self, entry):
@@ -100,7 +100,7 @@ class FacebookWebhookController(http.Controller):
             return
         
         current_state = conversation.chatbot_state or 'idle'
-        _logger.info(f'🤖 State: {current_state} | Message: "{user_message}"')
+        _logger.info('State: %s | Message: %s', current_state, user_message)
         
         if current_state == 'idle':
             self._state_idle(conversation, user_message)
@@ -138,7 +138,8 @@ class FacebookWebhookController(http.Controller):
             'chatbot_state': 'ask_phone'
         })
         
-        self._send_text(conv, f"Xin chào {name_normalized}!\n\nBạn vui lòng cung cấp SĐT?")
+        welcome_msg = "Xin chào %s!\n\nBạn vui lòng cung cấp SĐT?" % name_normalized
+        self._send_text(conv, welcome_msg)
     
     def _state_ask_phone(self, conv, msg):
         phone = msg.strip()
@@ -167,78 +168,66 @@ class FacebookWebhookController(http.Controller):
                 self._handle_product_selection(conv, product_id)
     
     def _state_confirm_order(self, conv, msg):
-        """
-        🔍 DEBUG VERSION - Extensive logging
-        """
+        """Xử lý xác nhận đơn hàng"""
         msg_lower = msg.lower().strip()
         
-        _logger.info(f'🔍 CONFIRM ORDER - Message: "{msg}" | Lower: "{msg_lower}"')
+        _logger.info('CONFIRM ORDER - Message: %s', msg)
         
         if any(kw in msg_lower for kw in ['có', 'yes', 'ok', 'đồng ý']):
-            _logger.info('🛒 User confirmed order - Starting creation...')
+            _logger.info('User confirmed order')
             
             try:
-                _logger.info('📝 Step 1: Validating order data...')
+                _logger.info('Step 1: Validating...')
                 validation = self._validate_order_data(conv)
-                _logger.info(f'✅ Validation: {validation}')
                 
                 if not validation['valid']:
-                    error_msg = f"Dữ liệu không hợp lệ: {validation['errors']}"
-                    _logger.error(f'❌ {error_msg}')
+                    error_msg = "Dữ liệu không hợp lệ: %s" % validation['errors']
+                    _logger.error(error_msg)
                     self._send_text(conv, error_msg)
                     return
                 
-                _logger.info('📝 Step 2: Creating messenger order...')
+                _logger.info('Step 2: Creating order...')
                 order = self._create_messenger_order_simple(conv)
-                _logger.info(f'✅ Order created: {order.name}')
+                _logger.info('Order created: %s', order.name)
                 
-                _logger.info('📝 Step 3: Creating sale order...')
+                _logger.info('Step 3: Creating sale order...')
                 sale_order = order.create_sale_order()
-                _logger.info(f'✅ Sale order created: {sale_order.name}')
+                _logger.info('Sale order created: %s', sale_order.name)
                 
-                _logger.info('📝 Step 4: Sending success message...')
-                success_msg = f"""🎉 Đặt hàng thành công!
+                _logger.info('Step 4: Sending success message...')
+                success_msg = """🎉 Đặt hàng thành công!
 
-📝 Mã: {order.name}
-📝 SO: {sale_order.name}
-💰 Tổng: {order.total_amount:,.0f}đ
+📝 Mã: %s
+📝 SO: %s
+💰 Tổng: %s đ
 
-Cảm ơn {conv.customer_name}!"""
+Cảm ơn %s!""" % (
+                    order.name,
+                    sale_order.name,
+                    "{:,.0f}".format(order.total_amount),
+                    conv.customer_name
+                )
                 
-                send_result = self._send_text(conv, success_msg)
-                _logger.info(f'✅ Send result: {send_result}')
+                self._send_text(conv, success_msg)
                 
-                _logger.info('📝 Step 5: Updating conversation state...')
                 conv.sudo().write({
                     'chatbot_state': 'completed',
                     'messenger_order_id': order.id
                 })
                 
-                _logger.info('📝 Step 6: Setting cooldown...')
                 self._set_cooldown(conv)
                 
-                _logger.info(f"✅✅✅ Order completed successfully: {order.name}")
+                _logger.info('Order completed: %s', order.name)
                 
             except Exception as e:
-                # 🔍 LOG CHI TIẾT LỖI
                 import traceback
-                error_trace = traceback.format_exc()
+                _logger.error('ORDER FAILED: %s', str(e))
+                _logger.error('Traceback:\n%s', traceback.format_exc())
                 
-                _logger.error(f'❌❌❌ ORDER CREATION FAILED')
-                _logger.error(f'Exception type: {type(e).__name__}')
-                _logger.error(f'Exception message: {str(e)}')
-                _logger.error(f'Full traceback:\n{error_trace}')
-                
-                # Reset state
                 conv.sudo().write({'chatbot_state': 'idle'})
-                
-                # Gửi error message
-                error_msg = f"Lỗi tạo đơn.\nChi tiết: {str(e)[:100]}"
-                _logger.info(f'📝 Sending error message: {error_msg}')
-                self._send_text(conv, error_msg)
+                self._send_text(conv, "Lỗi tạo đơn. Vui lòng thử lại!")
         
         elif any(kw in msg_lower for kw in ['không', 'no']):
-            _logger.info('❌ User cancelled order')
             conv.sudo().write({
                 'chatbot_state': 'show_products',
                 'selected_product_ids': [(5, 0, 0)]
@@ -246,7 +235,6 @@ Cảm ơn {conv.customer_name}!"""
             self._send_text(conv, "Đã hủy. Chọn lại!")
             self._send_product_list(conv)
         else:
-            _logger.warning(f'⚠️ Unknown response: "{msg}"')
             self._send_text(conv, 'Vui lòng gửi "Có" hoặc "Không"')
     
     def _state_completed(self, conv, msg):
@@ -257,84 +245,60 @@ Cảm ơn {conv.customer_name}!"""
             self._state_idle(conv, msg)
     
     def _create_messenger_order_simple(self, conv):
-        """Tạo order với extensive logging"""
-        try:
-            _logger.info(f'🔍 Creating order for: {conv.customer_name} / {conv.customer_phone}')
-            _logger.info(f'🔍 Products: {conv.selected_product_ids.ids}')
-            _logger.info(f'🔍 Company: {conv.company_id.id}')
-            
-            order_vals = {
-                'facebook_user_id': conv.facebook_user_id,
-                'customer_name': conv.customer_name,
-                'customer_phone': conv.customer_phone,
-                'product_ids': [(6, 0, conv.selected_product_ids.ids)],
-                'company_id': conv.company_id.id,
-                'state': 'confirmed',
-                'conversation_id': conv.id,
-            }
-            
-            _logger.info(f'🔍 Order vals: {order_vals}')
-            
-            order = request.env['social.messenger.order'].sudo().create(order_vals)
-            
-            _logger.info(f'✅ Order created: ID={order.id}, Name={order.name}')
-            
-            return order
-            
-        except Exception as e:
-            _logger.error(f'❌ Failed in _create_messenger_order_simple')
-            _logger.error(f'Error type: {type(e).__name__}')
-            _logger.error(f'Error message: {str(e)}')
-            raise
+        """Tạo messenger order"""
+        order_vals = {
+            'facebook_user_id': conv.facebook_user_id,
+            'customer_name': conv.customer_name,
+            'customer_phone': conv.customer_phone,
+            'product_ids': [(6, 0, conv.selected_product_ids.ids)],
+            'company_id': conv.company_id.id,
+            'state': 'confirmed',
+            'conversation_id': conv.id,
+        }
+        
+        order = request.env['social.messenger.order'].sudo().create(order_vals)
+        return order
     
     def _handle_product_selection(self, conv, product_id):
         try:
-            _logger.info(f'🔍 Handling product selection: {product_id}')
-            
             product = request.env['social.messenger.product'].sudo().browse(product_id)
             
             if not product.exists():
-                _logger.error(f'❌ Product {product_id} not found')
                 self._send_text(conv, "Sản phẩm không tồn tại!")
                 return
-            
-            _logger.info(f'✅ Product found: {product.product_id.name}')
             
             conv.sudo().write({
                 'selected_product_ids': [(6, 0, [product.id])],
                 'chatbot_state': 'confirm_order'
             })
             
-            price_text = f"{product.price:,.0f}đ" if product.price > 0 else "Liên hệ"
+            price_text = "{:,.0f}đ".format(product.price) if product.price > 0 else "Liên hệ"
             
-            confirm_msg = f"""✅ Bạn đã chọn:
+            confirm_msg = """✅ Bạn đã chọn:
 
-📦 {product.product_id.name}
+📦 %s
 🔢 Số lượng: 1
-💰 Giá: {price_text}
+💰 Giá: %s
 
-👤 {conv.customer_name}
-📞 {conv.customer_phone}
+👤 %s
+📞 %s
 
 Xác nhận đặt hàng?
 
-👉 "Có" hoặc "Không""""
+👉 "Có" hoặc "Không" """ % (
+                product.product_id.name,
+                price_text,
+                conv.customer_name,
+                conv.customer_phone
+            )
             
-            _logger.info(f'📝 Sending confirmation message...')
             self._send_text(conv, confirm_msg)
             
         except Exception as e:
-            _logger.error(f'❌ Product selection error: {e}', exc_info=True)
+            _logger.error('Product selection error: %s', e)
     
     def _send_text(self, conv, text):
-        """
-        🔍 DEBUG VERSION với extensive logging
-        """
-        _logger.info(f'🔍 _send_text called')
-        _logger.info(f'🔍 Text: "{text[:50]}..."')
-        _logger.info(f'🔍 Conv: {conv.id}')
-        _logger.info(f'🔍 PSID: {conv.facebook_user_id}')
-        
+        """Gửi tin nhắn text"""
         url = 'https://graph.facebook.com/v18.0/me/messages'
         
         payload = {
@@ -345,37 +309,18 @@ Xác nhận đặt hàng?
         
         params = {'access_token': conv.account_id.access_token}
         
-        _logger.info(f'🔍 Payload: {payload}')
-        _logger.info(f'🔍 URL: {url}')
-        
         try:
-            _logger.info('🔍 Sending POST request...')
             resp = requests.post(url, json=payload, params=params, timeout=10)
-            
-            _logger.info(f'🔍 Response status: {resp.status_code}')
-            _logger.info(f'🔍 Response text: {resp.text[:200]}')
-            
-            if resp.status_code == 200:
-                _logger.info(f'✅ Message sent successfully')
-                return True
-            else:
-                _logger.warning(f'⚠️ HTTP {resp.status_code}')
-                return False
-                
-        except Exception as e:
-            _logger.error(f'❌ Send error: {type(e).__name__}: {e}', exc_info=True)
+            return resp.status_code == 200
+        except:
             return False
     
     def _send_product_list(self, conv):
-        """Gửi danh sách sản phẩm với logging"""
-        _logger.info('🔍 Sending product list...')
-        
+        """Gửi danh sách sản phẩm"""
         products = request.env['social.messenger.product'].sudo().search([
             ('active', '=', True),
             ('company_id', '=', conv.company_id.id)
         ], order='sequence, id')
-        
-        _logger.info(f'🔍 Found {len(products)} products')
         
         if not products:
             self._send_text(conv, "Xin lỗi, chưa có sản phẩm!")
@@ -384,8 +329,8 @@ Xác nhận đặt hàng?
         product_list = "📦 Danh sách sản phẩm:\n\n"
         
         for idx, p in enumerate(products, 1):
-            price = f"{p.price:,.0f}đ" if p.price > 0 else "Liên hệ"
-            product_list += f"{idx}. {p.product_id.name} - {price}\n"
+            price = "{:,.0f}đ".format(p.price) if p.price > 0 else "Liên hệ"
+            product_list += "%s. %s - %s\n" % (idx, p.product_id.name, price)
         
         product_list += "\n👇 Chọn sản phẩm:"
         
@@ -394,10 +339,8 @@ Xác nhận đặt hàng?
             quick_replies.append({
                 'content_type': 'text',
                 'title': p.quick_reply_title or p.product_id.name[:20],
-                'payload': f'PRODUCT_{p.id}'
+                'payload': 'PRODUCT_%s' % p.id
             })
-        
-        _logger.info(f'🔍 Created {len(quick_replies)} quick replies')
         
         url = 'https://graph.facebook.com/v18.0/me/messages'
         
@@ -413,13 +356,9 @@ Xác nhận đặt hàng?
         params = {'access_token': conv.account_id.access_token}
         
         try:
-            resp = requests.post(url, json=payload, params=params, timeout=10)
-            if resp.status_code == 200:
-                _logger.info(f'✅ Sent product list')
-            else:
-                _logger.warning(f'⚠️ Failed: HTTP {resp.status_code}')
-        except Exception as e:
-            _logger.error(f'❌ Error: {e}')
+            requests.post(url, json=payload, params=params, timeout=10)
+        except:
+            pass
     
     def _validate_order_data(self, conv):
         errors = []
@@ -435,16 +374,12 @@ Xác nhận đặt hàng?
             'errors': ', '.join(errors)
         }
     
-    def _check_existing_customer(self, conv):
-        return None
-    
     def _set_cooldown(self, conv):
         try:
             cooldown_until = datetime.now() + timedelta(minutes=5)
             conv.sudo().write({'cooldown_until': cooldown_until})
-            _logger.info(f'✅ Cooldown set until {cooldown_until}')
-        except Exception as e:
-            _logger.warning(f'⚠️ Cooldown failed: {e}')
+        except:
+            pass
     
     def _is_in_cooldown(self, conv):
         if not hasattr(conv, 'cooldown_until'):
@@ -465,7 +400,6 @@ Xác nhận đặt hàng?
         ], limit=1)
         
         if not account:
-            _logger.error(f'❌ No account for page {recipient_id}')
             return None
         
         conv = request.env['social.message'].sudo().search([
@@ -474,7 +408,6 @@ Xác nhận đặt hàng?
         ], limit=1)
         
         if conv:
-            _logger.info(f'✅ Found existing conversation: {conv.id}')
             return conv
         
         conv_vals = {
@@ -485,9 +418,6 @@ Xác nhận đặt hàng?
         }
         
         try:
-            conv = request.env['social.message'].sudo().create(conv_vals)
-            _logger.info(f'✅ Created conversation: {conv.id}')
-            return conv
-        except Exception as e:
-            _logger.error(f'❌ Create conversation failed: {e}')
+            return request.env['social.message'].sudo().create(conv_vals)
+        except:
             return None
