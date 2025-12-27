@@ -43,10 +43,10 @@ NEW Features (v2.0):
         'security/social_security.xml',
         'security/ir.model.access.csv',
         
-        # Data - CHỈ GIỮ FILE TỒN TẠI
+        # Data
         'data/ir_cron_data.xml',
         
-        # Views - CHỈ GIỮ FILE TỒN TẠI
+        # Views
         'views/social_account_views.xml',
         'views/social_post_views.xml',
         'views/social_comment_views.xml',
@@ -54,6 +54,11 @@ NEW Features (v2.0):
         'views/social_message_views.xml',
         'views/social_messenger_product_views.xml',
         'views/social_messenger_order_views.xml',
+        'views/social_analytics_views.xml',        # ✅ THÊM
+        'views/social_post_template_views.xml',    # ✅ THÊM
+        'views/social_post_calendar_views.xml',    # ✅ THÊM
+        'views/social_chatbot_automation_views.xml', # ✅ THÊM
+        'views/dashboard_views.xml',               # ✅ THÊM - QUAN TRỌNG
         'views/menu_views.xml',
     ],
     'installable': True,
