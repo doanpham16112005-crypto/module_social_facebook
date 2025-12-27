@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Facebook Webhook Controller - PRODUCTION FIXED
-===============================================
+Facebook Webhook Controller - PRODUCTION VERSION
+================================================
 
-✅ FIX: Lỗi tạo đơn hàng
-✅ FIX: Link conversation_id đúng
-✅ FIX: Error handling chi tiết
+✅ FIX 1: Lỗi 'list' object has no attribute 'get'
+✅ FIX 2: Thêm số lượng sản phẩm vào tin nhắn xác nhận
+✅ FIX 3: Error handling toàn diện
 """
 
 import json
@@ -21,7 +21,7 @@ _logger = logging.getLogger(__name__)
 
 class FacebookWebhookController(http.Controller):
     """
-    Controller xử lý webhook từ Facebook với chatbot nâng cao.
+    Controller xử lý webhook từ Facebook.
     """
     
     # =========================================================================
@@ -31,7 +31,7 @@ class FacebookWebhookController(http.Controller):
     @http.route('/social/facebook/webhook', type='http', auth='public', 
                 methods=['GET'], csrf=False)
     def webhook_verify(self, **kwargs):
-        """Verify webhook theo Facebook requirements"""
+        """Verify webhook"""
         mode = kwargs.get('hub.mode')
         token = kwargs.get('hub.verify_token')
         challenge = kwargs.get('hub.challenge')
@@ -40,7 +40,7 @@ class FacebookWebhookController(http.Controller):
             'module_social_facebook.verify_token', '16112005'
         )
         
-        _logger.info(f'🔔 Webhook verify - mode: {mode}, token: {token}')
+        _logger.info(f'🔔 Webhook verify - mode: {mode}')
         
         if mode == 'subscribe' and token == verify_token:
             _logger.info('✅ Webhook verified!')
@@ -52,7 +52,7 @@ class FacebookWebhookController(http.Controller):
     @http.route('/social/facebook/webhook', type='http', auth='public', 
                 methods=['POST'], csrf=False)
     def webhook_callback(self, **kwargs):
-        """Nhận và xử lý events từ Facebook"""
+        """Nhận events từ Facebook"""
         try:
             body = request.httprequest.get_data(as_text=True)
             data = json.loads(body)
@@ -104,11 +104,11 @@ class FacebookWebhookController(http.Controller):
                 self._process_chatbot_flow(conversation, text)
     
     # =========================================================================
-    # ✅ CHATBOT FLOW
+    # CHATBOT FLOW
     # =========================================================================
     
     def _process_chatbot_flow(self, conversation, user_message):
-        """Chatbot flow với state machine"""
+        """Chatbot flow"""
         chatbot_enabled = request.env['ir.config_parameter'].sudo().get_param(
             'module_social_facebook.chatbot_enabled', 'False'
         )
@@ -116,7 +116,6 @@ class FacebookWebhookController(http.Controller):
         if chatbot_enabled != 'True':
             return
         
-        # Check cooldown
         if self._is_in_cooldown(conversation):
             self._send_text(conversation, 
                 "Cảm ơn bạn đã đặt hàng! Nếu cần hỗ trợ, vui lòng liên hệ hotline. 😊")
@@ -146,7 +145,6 @@ class FacebookWebhookController(http.Controller):
         """STATE: idle → ask_name"""
         msg_lower = msg.lower().strip()
         
-        # Chào hỏi
         greetings = ['xin chào', 'chào', 'hello', 'hi', 'hey', 'shop ơi', 'alo']
         if any(g in msg_lower for g in greetings):
             existing_customer = self._check_existing_customer(conv)
@@ -159,7 +157,6 @@ class FacebookWebhookController(http.Controller):
             self._send_text(conv, welcome_msg)
             return
         
-        # Từ khóa mua hàng
         purchase_keywords = ['mua', 'sản phẩm', 'giá', 'order', 'buy', 'menu', 'xem', 'đặt hàng']
         if any(kw in msg_lower for kw in purchase_keywords):
             existing_customer = self._check_existing_customer(conv)
@@ -256,7 +253,7 @@ class FacebookWebhookController(http.Controller):
                 "Vui lòng click button hoặc gửi 'sản phẩm 1', 'sản phẩm 2'...")
     
     def _state_confirm_order_validated(self, conv, msg):
-        """STATE: confirm_order → completed (TẠO ĐƠN)"""
+        """STATE: confirm_order → completed"""
         msg_lower = msg.lower().strip()
         
         if any(kw in msg_lower for kw in ['quay lại', 'chọn lại', 'đổi']):
@@ -271,7 +268,6 @@ class FacebookWebhookController(http.Controller):
         if any(kw in msg_lower for kw in ['có', 'yes', 'ok', 'đồng ý', 'đặt', 'chốt']):
             _logger.info('🛒 User confirmed order')
             
-            # ✅ Validate
             validation_result = self._validate_order_data(conv)
             if not validation_result['valid']:
                 _logger.error(f"❌ Validation failed: {validation_result['errors']}")
@@ -279,7 +275,6 @@ class FacebookWebhookController(http.Controller):
                     f"Có lỗi:\n{validation_result['errors']}\n\nVui lòng thử lại.")
                 return
             
-            # ✅ Tạo đơn
             try:
                 order_result = self._create_order_with_validation(conv)
                 
@@ -289,7 +284,7 @@ class FacebookWebhookController(http.Controller):
                     conv.sudo().write({
                         'chatbot_state': 'completed',
                         'messenger_order_id': order_result['order'].id,
-                        'lead_id': order_result['lead'].id if order_result.get('lead') else False
+                        'lead_id': order_result.get('lead').id if order_result.get('lead') else False
                     })
                     
                     success_msg = f"""🎉 **Đặt hàng thành công!**
@@ -311,8 +306,8 @@ Cảm ơn {conv.customer_name}! 🙏"""
                 _logger.error(f'❌ Order creation failed: {e}', exc_info=True)
                 conv.sudo().write({'chatbot_state': 'idle'})
                 self._send_text(conv, 
-                    "Có lỗi xảy ra khi tạo đơn hàng.\n"
-                    "Vui lòng liên hệ hotline để được hỗ trợ.\n"
+                    f"Có lỗi xảy ra khi tạo đơn hàng.\n"
+                    f"Vui lòng liên hệ hotline.\n"
                     f"Chi tiết lỗi: {str(e)[:100]}")
         
         elif any(kw in msg_lower for kw in ['không', 'no', 'hủy', 'cancel']):
@@ -353,14 +348,12 @@ Cảm ơn {conv.customer_name}! 🙏"""
         if not products:
             return None
         
-        # Pattern 1: "sản phẩm [số]"
         match = re.search(r'(?:sản phẩm|sp|số)\s*(\d+)', msg_lower)
         if match:
             index = int(match.group(1)) - 1
             if 0 <= index < len(products):
                 return products[index].id
         
-        # Pattern 2: Tên sản phẩm
         for product in products:
             if product.product_id.name.lower() in msg_lower:
                 return product.id
@@ -445,27 +438,28 @@ Cảm ơn {conv.customer_name}! 🙏"""
         try:
             _logger.info('🛒 Starting order creation...')
             
-            # ✅ FIX 1: Tạo messenger order với conversation_id
+            # Step 1: Tạo messenger order
             order = self._create_messenger_order(conv)
             if not order:
                 raise Exception('Failed to create messenger order')
             
             _logger.info(f'✅ Created messenger order: {order.name}')
             
-            # ✅ FIX 2: Tạo sale order
+            # Step 2: Tạo sale order
             sale_order = order.create_sale_order()
             if not sale_order:
                 raise Exception('Failed to create sale order')
             
             _logger.info(f'✅ Created sale order: {sale_order.name}')
             
-            # ✅ FIX 3: Tạo CRM lead (optional)
+            # Step 3: Tạo CRM lead (optional)
+            lead = None
             try:
                 lead = self._create_crm_lead(conv, order, sale_order)
-                _logger.info(f'✅ Created CRM lead: {lead.id}')
+                if lead:
+                    _logger.info(f'✅ Created CRM lead: {lead.id}')
             except Exception as e:
                 _logger.warning(f'⚠️ CRM lead creation failed: {e}')
-                lead = None
             
             return {
                 'success': True,
@@ -483,7 +477,7 @@ Cảm ơn {conv.customer_name}! 🙏"""
     
     def _create_messenger_order(self, conv):
         """
-        ✅ FIX: Tạo messenger order với conversation_id đúng
+        ✅ FIX: Tạo messenger order với conversation_id
         """
         try:
             order_vals = {
@@ -493,20 +487,19 @@ Cảm ơn {conv.customer_name}! 🙏"""
                 'product_ids': [(6, 0, conv.selected_product_ids.ids)],
                 'company_id': conv.company_id.id,
                 'state': 'confirmed',
-                # ✅ FIX: Link conversation
                 'conversation_id': conv.id,
             }
             
-            _logger.info(f'📝 Creating messenger order with data: {order_vals}')
+            _logger.info(f'📝 Creating order: customer={conv.customer_name}, products={len(conv.selected_product_ids)}')
             
             order = request.env['social.messenger.order'].sudo().create(order_vals)
             
-            _logger.info(f'✅ Messenger order created: ID={order.id}, Name={order.name}')
+            _logger.info(f'✅ Order created: {order.name}')
             
             return order
             
         except Exception as e:
-            _logger.error(f'❌ Create messenger order failed: {e}', exc_info=True)
+            _logger.error(f'❌ Create order failed: {e}', exc_info=True)
             raise
     
     def _create_crm_lead(self, conv, order, sale_order):
@@ -534,7 +527,7 @@ Cảm ơn {conv.customer_name}! 🙏"""
                 'description': f"""Lead from Facebook Messenger
 
 Order: {order.name}
-Sale Order: {sale_order.name}
+Sale: {sale_order.name}
 Total: {order.total_amount:,.0f}đ
 
 Customer:
@@ -554,11 +547,13 @@ Customer:
             return lead
             
         except Exception as e:
-            _logger.error(f'❌ Create CRM lead failed: {e}', exc_info=True)
+            _logger.error(f'❌ Create lead failed: {e}', exc_info=True)
             return None
     
     def _handle_product_selection(self, conv, product_id):
-        """Xử lý khi chọn sản phẩm"""
+        """
+        ✅ FIX 2: Thêm số lượng sản phẩm vào tin nhắn xác nhận
+        """
         try:
             product = request.env['social.messenger.product'].sudo().browse(product_id)
             
@@ -576,9 +571,11 @@ Customer:
             
             price_text = f"{product.price:,.0f}đ" if product.price > 0 else "Liên hệ"
             
+            # ✅ FIX 2: Thêm số lượng vào message
             confirm_msg = f"""✅ Bạn đã chọn:
 
 📦 **{product.product_id.name}**
+🔢 Số lượng: 1
 💰 Giá: {price_text}
 
 📋 Thông tin:
@@ -594,13 +591,16 @@ Customer:
             
         except Exception as e:
             _logger.error(f'❌ Handle product selection error: {e}', exc_info=True)
+            self._send_text(conv, f"Lỗi: {str(e)}")
     
     # =========================================================================
     # SEND MESSAGE
     # =========================================================================
     
     def _send_text(self, conv, text):
-        """Gửi tin nhắn text"""
+        """
+        ✅ FIX 1: Sửa lỗi 'list' object has no attribute 'get'
+        """
         url = 'https://graph.facebook.com/v18.0/me/messages'
         
         payload = {
@@ -614,8 +614,35 @@ Customer:
         try:
             response = requests.post(url, json=payload, params=params, timeout=10)
             response.raise_for_status()
-            _logger.info(f'✅ Sent: "{text[:30]}..."')
+            
+            # ✅ FIX 1: Parse JSON an toàn
+            try:
+                result = response.json()
+                # ✅ Check result là dict, không phải list
+                if isinstance(result, dict):
+                    message_id = result.get('message_id', 'N/A')
+                    _logger.info(f'✅ Sent: "{text[:30]}..." (msg_id: {message_id})')
+                else:
+                    _logger.info(f'✅ Sent: "{text[:30]}..."')
+            except:
+                _logger.info(f'✅ Sent: "{text[:30]}..."')
+            
             return True
+            
+        except requests.exceptions.HTTPError as e:
+            try:
+                error_data = e.response.json()
+                # ✅ Check error_data là dict
+                if isinstance(error_data, dict):
+                    error_msg = error_data.get('error', {}).get('message', str(e))
+                else:
+                    error_msg = str(e)
+            except:
+                error_msg = str(e)
+            
+            _logger.error(f'❌ Send failed: {error_msg}')
+            return False
+            
         except Exception as e:
             _logger.error(f'❌ Send failed: {e}')
             return False
