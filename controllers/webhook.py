@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Facebook Webhook Controller - PRODUCTION VERSION
-================================================
+Facebook Webhook Controller - PRODUCTION BULLETPROOF
+====================================================
 
-✅ FIX 1: Lỗi 'list' object has no attribute 'get'
-✅ FIX 2: Thêm số lượng sản phẩm vào tin nhắn xác nhận
-✅ FIX 3: Error handling toàn diện
+✅ TRIPLE-CHECK: Mọi chỗ parse JSON đều check isinstance()
+✅ FIX: Safe error handling ở TẤT CẢ requests
+✅ FIX: Thêm số lượng sản phẩm
 """
 
 import json
@@ -428,31 +428,26 @@ Cảm ơn {conv.customer_name}! 🙏"""
             return None
     
     # =========================================================================
-    # ✅ ORDER CREATION - FIXED
+    # ORDER CREATION
     # =========================================================================
     
     def _create_order_with_validation(self, conv):
-        """
-        ✅ FIX: Tạo đơn với error handling đầy đủ
-        """
+        """Tạo đơn với error handling"""
         try:
             _logger.info('🛒 Starting order creation...')
             
-            # Step 1: Tạo messenger order
             order = self._create_messenger_order(conv)
             if not order:
                 raise Exception('Failed to create messenger order')
             
             _logger.info(f'✅ Created messenger order: {order.name}')
             
-            # Step 2: Tạo sale order
             sale_order = order.create_sale_order()
             if not sale_order:
                 raise Exception('Failed to create sale order')
             
             _logger.info(f'✅ Created sale order: {sale_order.name}')
             
-            # Step 3: Tạo CRM lead (optional)
             lead = None
             try:
                 lead = self._create_crm_lead(conv, order, sale_order)
@@ -476,9 +471,7 @@ Cảm ơn {conv.customer_name}! 🙏"""
             }
     
     def _create_messenger_order(self, conv):
-        """
-        ✅ FIX: Tạo messenger order với conversation_id
-        """
+        """Tạo messenger order"""
         try:
             order_vals = {
                 'facebook_user_id': conv.facebook_user_id,
@@ -551,9 +544,7 @@ Customer:
             return None
     
     def _handle_product_selection(self, conv, product_id):
-        """
-        ✅ FIX 2: Thêm số lượng sản phẩm vào tin nhắn xác nhận
-        """
+        """Xử lý khi chọn sản phẩm"""
         try:
             product = request.env['social.messenger.product'].sudo().browse(product_id)
             
@@ -571,7 +562,6 @@ Customer:
             
             price_text = f"{product.price:,.0f}đ" if product.price > 0 else "Liên hệ"
             
-            # ✅ FIX 2: Thêm số lượng vào message
             confirm_msg = f"""✅ Bạn đã chọn:
 
 📦 **{product.product_id.name}**
@@ -591,15 +581,14 @@ Customer:
             
         except Exception as e:
             _logger.error(f'❌ Handle product selection error: {e}', exc_info=True)
-            self._send_text(conv, f"Lỗi: {str(e)}")
     
     # =========================================================================
-    # SEND MESSAGE
+    # ✅ SEND MESSAGE - BULLETPROOF VERSION
     # =========================================================================
     
     def _send_text(self, conv, text):
         """
-        ✅ FIX 1: Sửa lỗi 'list' object has no attribute 'get'
+        ✅ BULLETPROOF: Triple-check JSON parsing
         """
         url = 'https://graph.facebook.com/v18.0/me/messages'
         
@@ -613,38 +602,48 @@ Customer:
         
         try:
             response = requests.post(url, json=payload, params=params, timeout=10)
-            response.raise_for_status()
             
-            # ✅ FIX 1: Parse JSON an toàn
+            # ✅ CHECK 1: HTTP status
+            if response.status_code != 200:
+                _logger.warning(f'⚠️ HTTP {response.status_code}: {response.text[:200]}')
+                # Try to parse error
+                try:
+                    error_data = response.json()
+                    if isinstance(error_data, dict):
+                        error_msg = error_data.get('error', {})
+                        if isinstance(error_msg, dict):
+                            _logger.error(f'❌ API Error: {error_msg.get("message", "Unknown")}')
+                except:
+                    pass
+                return False
+            
+            # ✅ CHECK 2: Parse JSON safely
             try:
                 result = response.json()
-                # ✅ Check result là dict, không phải list
-                if isinstance(result, dict):
-                    message_id = result.get('message_id', 'N/A')
-                    _logger.info(f'✅ Sent: "{text[:30]}..." (msg_id: {message_id})')
-                else:
-                    _logger.info(f'✅ Sent: "{text[:30]}..."')
-            except:
-                _logger.info(f'✅ Sent: "{text[:30]}..."')
+            except json.JSONDecodeError as e:
+                _logger.error(f'❌ JSON decode failed: {e}')
+                return False
             
+            # ✅ CHECK 3: Validate response structure
+            if not isinstance(result, dict):
+                _logger.warning(f'⚠️ Response is not dict: {type(result)}')
+                # But still consider it success if HTTP 200
+                _logger.info(f'✅ Sent (non-dict response): "{text[:30]}..."')
+                return True
+            
+            # ✅ CHECK 4: Extract message_id safely
+            message_id = result.get('message_id', 'N/A')
+            _logger.info(f'✅ Sent (id: {message_id}): "{text[:30]}..."')
             return True
             
-        except requests.exceptions.HTTPError as e:
-            try:
-                error_data = e.response.json()
-                # ✅ Check error_data là dict
-                if isinstance(error_data, dict):
-                    error_msg = error_data.get('error', {}).get('message', str(e))
-                else:
-                    error_msg = str(e)
-            except:
-                error_msg = str(e)
-            
-            _logger.error(f'❌ Send failed: {error_msg}')
+        except requests.exceptions.Timeout:
+            _logger.error('❌ Request timeout')
             return False
-            
+        except requests.exceptions.ConnectionError as e:
+            _logger.error(f'❌ Connection error: {e}')
+            return False
         except Exception as e:
-            _logger.error(f'❌ Send failed: {e}')
+            _logger.error(f'❌ Send failed: {e}', exc_info=True)
             return False
     
     def _send_product_list(self, conv):
@@ -689,8 +688,11 @@ Customer:
         
         try:
             response = requests.post(url, json=payload, params=params, timeout=10)
-            response.raise_for_status()
-            _logger.info(f'✅ Sent product list ({len(quick_replies)} items)')
+            
+            if response.status_code == 200:
+                _logger.info(f'✅ Sent product list ({len(quick_replies)} items)')
+            else:
+                _logger.warning(f'⚠️ Failed to send product list: HTTP {response.status_code}')
         except Exception as e:
             _logger.error(f'❌ Send product list failed: {e}')
     
