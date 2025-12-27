@@ -10,12 +10,9 @@ _logger = logging.getLogger(__name__)
 
 class SocialMessage(models.Model):
     """
-    Model quản lý Facebook Messenger conversations và messages.
+    Model quản lý Facebook Messenger conversations.
     
-    ✅ UPDATED: Đã thêm đầy đủ field cho chatbot flow
-    
-    Chatbot Flow:
-    - idle → ask_name → ask_phone → show_products → confirm_order → completed
+    ✅ UPGRADED VERSION với đầy đủ field cho chatbot nâng cao
     """
     
     _name = 'social.message'
@@ -82,7 +79,7 @@ class SocialMessage(models.Model):
     )
     
     # =========================================================================
-    # ✅ CHATBOT FIELDS (CRITICAL - BẮT BUỘC CÓ)
+    # ✅ CHATBOT FIELDS
     # =========================================================================
     
     chatbot_state = fields.Selection([
@@ -97,11 +94,13 @@ class SocialMessage(models.Model):
     customer_name = fields.Char(
         string='Customer Name',
         tracking=True,
+        help='Tên khách hàng (đã chuẩn hóa)',
     )
     
     customer_phone = fields.Char(
         string='Customer Phone',
         tracking=True,
+        help='Số điện thoại (đã chuẩn hóa về format 0XXXXXXXXX)',
     )
     
     selected_product_ids = fields.Many2many(
@@ -110,6 +109,12 @@ class SocialMessage(models.Model):
         'message_id',
         'product_id',
         string='Selected Products',
+    )
+    
+    # ✅ NÂNG CẤP 7: Cooldown field
+    cooldown_until = fields.Datetime(
+        string='Cooldown Until',
+        help='Thời gian kết thúc cooldown sau khi hoàn tất đơn hàng (tránh spam)',
     )
     
     # =========================================================================
