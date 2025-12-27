@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -9,8 +9,7 @@ _logger = logging.getLogger(__name__)
 
 class SocialMessengerOrder(models.Model):
     """
-    Đơn hàng được tạo từ Facebook Messenger.
-    Link với sale.order và social.conversation.
+    ✅ VERSION ĐƠN GIẢN - KHÔNG GỌI send_order_confirmation() trong create_sale_order()
     """
     _name = 'social.messenger.order'
     _description = 'Messenger Sales Order'
@@ -36,7 +35,6 @@ class SocialMessengerOrder(models.Model):
         'social.message',
         string='Conversation',
         ondelete='set null',
-        help='Cuộc hội thoại Messenger tạo ra đơn hàng này',
     )
     
     # Customer Info
@@ -49,7 +47,6 @@ class SocialMessengerOrder(models.Model):
     )
     facebook_user_id = fields.Char(
         string='Facebook User ID',
-        help='PSID của khách hàng',
         tracking=True,
     )
     customer_name = fields.Char(
@@ -86,7 +83,6 @@ class SocialMessengerOrder(models.Model):
     product_ids = fields.Many2many(
         'social.messenger.product',
         string='Products',
-        help='Sản phẩm khách hàng đã chọn',
     )
     
     # Pricing
@@ -132,7 +128,7 @@ class SocialMessengerOrder(models.Model):
     
     @api.depends('sale_order_id', 'sale_order_id.amount_total')
     def _compute_total_amount(self):
-        """Tính tổng tiền từ sale.order hoặc products"""
+        """Tính tổng tiền"""
         for record in self:
             if record.sale_order_id:
                 record.total_amount = record.sale_order_id.amount_total
@@ -140,28 +136,19 @@ class SocialMessengerOrder(models.Model):
                 total = sum(record.product_ids.mapped('price'))
                 record.total_amount = total
     
-    # -------------------------------------------------------------------------
-    # BUSINESS METHODS
-    # -------------------------------------------------------------------------
-    
     def create_sale_order(self):
         """
-        Tạo sale.order từ messenger order.
+        ✅ TẠO SALE ORDER - KHÔNG GỌI send_order_confirmation()
         
-        Flow:
-        1. Tìm hoặc tạo res.partner
-        2. Tạo sale.order
-        3. Thêm order lines từ products
-        4. Link sale_order_id
-        5. Chuyển state → 'sale'
+        Webhook sẽ tự gửi tin nhắn confirmation.
         """
         self.ensure_one()
         
         if self.sale_order_id:
-            raise UserError(_('Sale Order already exists for this Messenger Order!'))
+            raise UserError(_('Sale Order already exists!'))
         
         if not self.product_ids:
-            raise UserError(_('Please select at least one product!'))
+            raise UserError(_('No products selected!'))
         
         # 1. Find or create partner
         partner = self._find_or_create_partner()
@@ -173,7 +160,7 @@ class SocialMessengerOrder(models.Model):
             'company_id': self.company_id.id,
             'date_order': self.order_date,
             'origin': f'Messenger: {self.name}',
-            'note': self.notes or f'Order from Facebook Messenger\nFacebook User: {self.facebook_user_id}',
+            'note': f'Order from Facebook Messenger\nPSID: {self.facebook_user_id}',
         }
         
         sale_order = self.env['sale.order'].create(sale_vals)
@@ -192,39 +179,21 @@ class SocialMessengerOrder(models.Model):
         self.sale_order_id = sale_order.id
         self.state = 'sale'
         
-        # 5. Send confirmation message
-        self.send_order_confirmation()
+        # ✅ KHÔNG GỌI send_order_confirmation() - Webhook tự gửi
         
-        # 6. Log activity
+        # 5. Log activity
         self.message_post(
             body=_('Sale Order %s created from Messenger') % sale_order.name,
             subject=_('Sale Order Created'),
         )
         
+        _logger.info(f'✅ Created sale order {sale_order.name} for {self.name}')
+        
         return sale_order
     
     def _find_or_create_partner(self):
-        """
-        Tìm hoặc tạo res.partner từ thông tin khách hàng.
-        
-        Logic:
-        - Tìm theo facebook_user_id (custom field)
-        - Nếu không có, tìm theo phone
-        - Nếu không có, tạo mới
-        
-        Returns:
-            res.partner: Partner record
-        """
+        """Tìm hoặc tạo res.partner"""
         Partner = self.env['res.partner']
-        
-        # Check if partner has facebook_user_id field (custom field)
-        if 'facebook_user_id' in Partner._fields:
-            partner = Partner.search([
-                ('facebook_user_id', '=', self.facebook_user_id),
-                ('company_id', 'in', [False, self.company_id.id]),
-            ], limit=1)
-            if partner:
-                return partner
         
         # Search by phone
         if self.customer_phone:
@@ -233,9 +202,6 @@ class SocialMessengerOrder(models.Model):
                 ('company_id', 'in', [False, self.company_id.id]),
             ], limit=1)
             if partner:
-                # Update facebook_user_id if field exists
-                if 'facebook_user_id' in Partner._fields and not partner.facebook_user_id:
-                    partner.facebook_user_id = self.facebook_user_id
                 return partner
         
         # Create new partner
@@ -244,87 +210,16 @@ class SocialMessengerOrder(models.Model):
             'phone': self.customer_phone,
             'email': self.customer_email,
             'company_id': self.company_id.id,
-            'comment': f'Created from Facebook Messenger Order: {self.name}',
+            'comment': f'Created from Messenger Order: {self.name}',
         }
-        
-        # Add facebook_user_id if field exists
-        if 'facebook_user_id' in Partner._fields:
-            partner_vals['facebook_user_id'] = self.facebook_user_id
         
         partner = Partner.create(partner_vals)
         
-        _logger.info(f'Created new partner {partner.id} for Messenger Order {self.name}')
+        _logger.info(f'Created partner {partner.id} for order {self.name}')
         
         return partner
     
-    def send_order_confirmation(self):
-        """
-        ✅ FIX: Gửi tin nhắn xác nhận đơn hàng qua Messenger
-        
-        Message format:
-        ✅ Đơn hàng #{name} đã được xác nhận!
-        📦 Sản phẩm: [Product List]
-        💰 Tổng tiền: {total}
-        📞 Chúng tôi sẽ liên hệ bạn sớm!
-        """
-        self.ensure_one()
-        
-        if not self.conversation_id:
-            _logger.warning(f'No conversation found for order {self.name}')
-            return
-        
-        # Build message
-        product_list = '\n'.join([
-            f"  • {p.product_id.name} - {p.price:,.0f} {p.currency_id.symbol}"
-            for p in self.product_ids
-        ])
-        
-        message = f"""✅ Đơn hàng #{self.name} đã được xác nhận!
-
-📦 Sản phẩm:
-{product_list}
-
-💰 Tổng tiền: {self.total_amount:,.0f} {self.currency_id.symbol}
-
-📞 Chúng tôi sẽ liên hệ với bạn trong thời gian sớm nhất!
-Cảm ơn bạn đã mua hàng."""
-        
-        # Send via Messenger API
-        try:
-            from odoo.addons.module_social_facebook.lib import facebook_api
-            
-            # Get page access token from conversation's account
-            account = self.conversation_id.account_id
-            if not account or not account.access_token:
-                _logger.error(f'No access token found for conversation {self.conversation_id.id}')
-                return
-            
-            api = facebook_api.FacebookAPI(account.access_token)
-            
-            # ✅ FIX: Gọi send_message với 2 tham số riêng
-            api.send_message(
-                recipient_id=self.facebook_user_id,
-                message_text=message  # ← FIX: Truyền text, không phải dict
-            )
-            
-            _logger.info(f'✅ Sent order confirmation for {self.name} to {self.facebook_user_id}')
-            
-            # Log to chatter
-            self.message_post(
-                body=_('Order confirmation sent via Messenger'),
-                subject=_('Confirmation Sent'),
-            )
-            
-        except Exception as e:
-            _logger.error(f'❌ Failed to send confirmation for order {self.name}: {e}', exc_info=True)
-            self.message_post(
-                body=_('Failed to send confirmation: %s') % str(e),
-                subject=_('Error'),
-            )
-    
-    # -------------------------------------------------------------------------
-    # ACTIONS
-    # -------------------------------------------------------------------------
+    # ✅ XÓA METHOD send_order_confirmation() - Webhook tự xử lý
     
     def action_confirm(self):
         """Xác nhận đơn hàng"""
@@ -370,16 +265,11 @@ Cảm ơn bạn đã mua hàng."""
             record.message_post(body=_('Order cancelled'))
 
 
-# -------------------------------------------------------------------------
-# EXTEND res.partner (OPTIONAL)
-# -------------------------------------------------------------------------
-
 class ResPartner(models.Model):
     _inherit = 'res.partner'
     
     facebook_user_id = fields.Char(
         string='Facebook User ID (PSID)',
-        help='Facebook Page-Scoped User ID',
     )
     messenger_order_count = fields.Integer(
         string='Messenger Orders',
@@ -387,14 +277,12 @@ class ResPartner(models.Model):
     )
     
     def _compute_messenger_order_count(self):
-        """Đếm số đơn hàng Messenger"""
         for partner in self:
             partner.messenger_order_count = self.env['social.messenger.order'].search_count([
                 ('partner_id', '=', partner.id)
             ])
     
     def action_view_messenger_orders(self):
-        """Xem đơn hàng Messenger"""
         self.ensure_one()
         return {
             'name': _('Messenger Orders'),
