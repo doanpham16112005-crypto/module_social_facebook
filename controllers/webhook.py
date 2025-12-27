@@ -169,65 +169,57 @@ class FacebookWebhookController(http.Controller):
                 self._handle_product_selection(conv, product_id)
     
     def _state_confirm_order(self, conv, msg):
-        """✅ XÁC NHẬN VÀ TẠO SALE ORDER"""
+        """✅ XÁC NHẬN VÀ TẠO SALE ORDER VỚI PARTNER"""
         msg_lower = msg.lower().strip()
         
-        _logger.info('=' * 80)
-        _logger.info('📝 CONFIRM ORDER FLOW STARTED')
-        _logger.info('=' * 80)
-        
         if any(kw in msg_lower for kw in ['có', 'yes', 'ok', 'đồng ý']):
-            _logger.info('✅ User confirmed order')
+            _logger.info('=' * 80)
+            _logger.info('📝 CREATING ORDER WITH PARTNER')
+            _logger.info('=' * 80)
             
             try:
-                # ✅ STEP 1: VALIDATE
-                _logger.info('\n⚙️ STEP 1: Validating order data...')
-                _logger.info('  📝 Name: %s', conv.customer_name)
-                _logger.info('  📞 Phone: %s', conv.customer_phone)
-                _logger.info('  📦 Products: %s', len(conv.selected_product_ids))
-                
+                # STEP 1: Validate
                 validation = self._validate_order_data(conv)
-                
                 if not validation['valid']:
-                    error_msg = "❌ Dữ liệu không hợp lệ: %s" % validation['errors']
-                    _logger.error(error_msg)
-                    self._send_text(conv, error_msg)
+                    self._send_text(conv, "❌ Dữ liệu không hợp lệ: %s" % validation['errors'])
                     return
                 
-                _logger.info('✅ Validation PASSED')
+                # STEP 2: Create/Find Partner (QUAN TRỌNG!)
+                _logger.info('Creating partner: %s - %s', conv.customer_name, conv.customer_phone)
                 
-                # ✅ STEP 2: CREATE/FIND PARTNER (QUAN TRỌNG!)
-                _logger.info('\n⚙️ STEP 2: Creating/Finding Partner...')
+                partner = self._odoo_create_partner(
+                    name=conv.customer_name,
+                    phone=conv.customer_phone,
+                    company_id=conv.company_id.id
+                )
                 
-                partner = self._find_or_create_partner_complete(conv)
+                _logger.info('✅ Partner created/found: %s (ID: %s)', partner.name, partner.id)
                 
-                if not partner:
-                    raise Exception('Failed to create/find partner')
+                # STEP 3: Create Sale Order WITH partner_id
+                _logger.info('Creating sale order with partner_id=%s', partner.id)
                 
-                # ✅ VERIFY PARTNER
-                _logger.info('✅✅✅ PARTNER VERIFIED ✅✅✅')
-                _logger.info('  🆔 Partner ID: %s', partner.id)
-                _logger.info('  👤 Partner Name: %s', partner.name)
-                _logger.info('  📞 Partner Phone: %s', partner.phone)
-                _logger.info('  🏷️ Partner Tags: %s', partner.category_id.mapped('name'))
-                _logger.info('  👥 Partner Type: %s', partner.company_type)
+                sale_order = self._odoo_create_sale_order(
+                    partner_id=partner.id,
+                    company_id=conv.company_id.id,
+                    origin='Facebook Messenger - %s' % conv.facebook_user_id,
+                    note='Đơn từ Messenger\nKhách: %s\nSĐT: %s' % (
+                        conv.customer_name, conv.customer_phone
+                    )
+                )
                 
-                # ✅ STEP 3: CREATE SALE ORDER WITH PARTNER
-                _logger.info('\n⚙️ STEP 3: Creating Sale Order...')
+                _logger.info('✅ Sale order created: %s', sale_order.name)
+                _logger.info('  Partner: %s', sale_order.partner_id.name)
                 
-                sale_order = self._create_sale_order_with_verified_partner(conv, partner)
+                # STEP 4: Add order lines
+                for product in conv.selected_product_ids:
+                    self._odoo_add_order_line(
+                        order_id=sale_order.id,
+                        product_id=product.product_id.id,
+                        quantity=1,
+                        price=product.price
+                    )
                 
-                # ✅ VERIFY SALE ORDER
-                _logger.info('✅✅✅ SALE ORDER VERIFIED ✅✅✅')
-                _logger.info('  🆔 Order ID: %s', sale_order.id)
-                _logger.info('  📝 Order Name: %s', sale_order.name)
-                _logger.info('  👤 Order Partner ID: %s', sale_order.partner_id.id)
-                _logger.info('  👤 Order Partner Name: %s', sale_order.partner_id.name)
-                _logger.info('  💰 Order Total: %s', sale_order.amount_total)
-                
-                # ✅ STEP 4: SEND SUCCESS MESSAGE
-                _logger.info('\n⚙️ STEP 4: Sending success message...')
-                
+                # STEP 5: Send success message
                 success_msg = """🎉 Đặt hàng thành công!
 
 📝 Mã đơn hàng: %s
@@ -240,259 +232,154 @@ class FacebookWebhookController(http.Controller):
 📞 SĐT: %s
 
 ✅ Đơn hàng đã được ghi nhận!
-Chúng tôi sẽ liên hệ xác nhận trong thời gian sớm nhất.
+Chúng tôi sẽ liên hệ xác nhận sớm nhất.
 
 Cảm ơn bạn! 🙏""" % (
                     sale_order.name,
                     "{:,.0f}".format(sale_order.amount_total),
                     self._format_order_lines(sale_order),
-                    partner.name,
-                    partner.phone
+                    conv.customer_name,
+                    conv.customer_phone
                 )
                 
                 self._send_text(conv, success_msg)
                 
-                # ✅ STEP 5: UPDATE STATE
                 conv.sudo().write({'chatbot_state': 'completed'})
                 self._set_cooldown(conv)
                 
                 _logger.info('=' * 80)
-                _logger.info('✅✅✅ ORDER FLOW COMPLETED SUCCESSFULLY ✅✅✅')
+                _logger.info('✅✅✅ ORDER COMPLETED ✅✅✅')
                 _logger.info('=' * 80)
                 
             except Exception as e:
                 import traceback
-                _logger.error('=' * 80)
-                _logger.error('❌❌❌ ORDER FLOW FAILED ❌❌❌')
-                _logger.error('Error: %s', str(e))
-                _logger.error('Traceback:\n%s', traceback.format_exc())
-                _logger.error('=' * 80)
+                _logger.error('❌ ORDER FAILED: %s', str(e))
+                _logger.error(traceback.format_exc())
                 
                 conv.sudo().write({'chatbot_state': 'idle'})
-                self._send_text(conv, 
-                    "❌ Xin lỗi, có lỗi xảy ra khi tạo đơn hàng.\n"
-                    "Vui lòng thử lại hoặc liên hệ hotline!")
+                self._send_text(conv, "❌ Có lỗi xảy ra. Vui lòng thử lại!")
         
         elif any(kw in msg_lower for kw in ['không', 'no']):
             conv.sudo().write({
                 'chatbot_state': 'show_products',
                 'selected_product_ids': [(5, 0, 0)]
             })
-            self._send_text(conv, "Đã hủy đơn hàng. Bạn có thể chọn lại sản phẩm! 🔄")
+            self._send_text(conv, "Đã hủy. Chọn lại!")
             self._send_product_list(conv)
         else:
-            self._send_text(conv, 
-                '⚠️ Vui lòng trả lời:\n'
-                '✅ "Có" - để xác nhận đặt hàng\n'
-                '❌ "Không" - để hủy và chọn lại')
+            self._send_text(conv, 'Vui lòng gửi "Có" hoặc "Không"')
     
     def _state_completed(self, conv, msg):
         if self._is_in_cooldown(conv):
-            self._send_text(conv, 
-                "Đơn hàng của bạn đang được xử lý. "
-                "Chúng tôi sẽ liên hệ sớm nhất! 📞")
+            self._send_text(conv, "Đơn hàng đang xử lý...")
         else:
             conv.sudo().write({'chatbot_state': 'idle'})
             self._state_idle(conv, msg)
     
     # =========================================================================
-    # ✅✅✅ CORE BUSINESS LOGIC - PARTNER & SALE ORDER ✅✅✅
+    # ✅✅✅ ODOO INTEGRATION METHODS (GIỐNG app.py) ✅✅✅
     # =========================================================================
     
-    def _find_or_create_partner_complete(self, conv):
+    def _odoo_create_partner(self, name, phone, company_id):
         """
-        ✅ TÌM HOẶC TẠO PARTNER - VERSION HOÀN CHỈNH
-        
-        Đảm bảo:
-        1. Partner được tạo/tìm TRƯỚC
-        2. Partner có đầy đủ: name, phone, tag Facebook, type=person
-        3. Partner được COMMIT vào DB
-        4. Return partner đã verified
+        ✅ TẠO PARTNER (tương tự app.py nhưng dùng ORM thay vì JSON-RPC)
         
         Returns:
-            res.partner: Partner record (committed)
+            res.partner: Partner record
         """
         Partner = request.env['res.partner'].sudo()
         
-        _logger.info('🔍 Searching for existing partner...')
+        # 1. TÌM PARTNER THEO SĐT
+        partner = Partner.search([
+            ('phone', '=', phone),
+            '|',
+            ('company_id', '=', False),
+            ('company_id', '=', company_id),
+        ], limit=1)
         
-        # ✅ TÌM PARTNER THEO SĐT
-        partner = None
-        
-        if conv.customer_phone:
-            partner = Partner.search([
-                ('phone', '=', conv.customer_phone),
-                '|',
-                ('company_id', '=', False),
-                ('company_id', '=', conv.company_id.id),
-            ], limit=1)
+        if partner:
+            _logger.info('Found existing partner: %s', partner.name)
             
-            if partner:
-                _logger.info('✅ Found existing partner by phone')
-                _logger.info('  🆔 ID: %s', partner.id)
-                _logger.info('  👤 Name: %s', partner.name)
-                
-                # Ensure Facebook tag
-                self._ensure_facebook_tag(partner)
-                
-                # Reload partner to get fresh data
-                partner = Partner.browse(partner.id)
-                
-                return partner
+            # Ensure Facebook tag
+            self._ensure_facebook_tag(partner)
+            
+            return partner
         
-        # ✅ TẠO PARTNER MỚI
-        _logger.info('🆕 Creating NEW partner...')
+        # 2. TẠO PARTNER MỚI (giống contact_data trong app.py)
+        _logger.info('Creating new partner: %s', name)
         
-        # Get Facebook tag
         facebook_tag = self._get_or_create_facebook_tag()
         
-        _logger.info('  🏷️ Facebook tag ID: %s', facebook_tag.id)
-        
-        # ✅ PREPARE VALUES
-        partner_vals = {
-            'name': conv.customer_name,
-            'phone': conv.customer_phone,
-            'company_id': conv.company_id.id,
+        partner_data = {
+            'name': name,           # Giống app.py
+            'phone': phone,         # Giống app.py
+            'company_id': company_id,
             'company_type': 'person',  # ✅ QUAN TRỌNG
-            'category_id': [(6, 0, [facebook_tag.id])],  # ✅ QUAN TRỌNG
-            'comment': (
-                'Khách hàng từ Facebook Messenger Chatbot\n'
-                'PSID: %s\n'
-                'Tạo lúc: %s'
-            ) % (
-                conv.facebook_user_id,
-                fields.Datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            ),
+            'category_id': [(6, 0, [facebook_tag.id])],  # ✅ TAG FACEBOOK
         }
         
-        _logger.info('  📝 Creating with values:')
-        _logger.info('    - name: %s', partner_vals['name'])
-        _logger.info('    - phone: %s', partner_vals['phone'])
-        _logger.info('    - company_type: %s', partner_vals['company_type'])
-        _logger.info('    - tags: [Facebook]')
+        partner = Partner.create(partner_data)
         
-        # ✅ CREATE PARTNER
-        partner = Partner.create(partner_vals)
-        
-        # ✅✅✅ CRITICAL: COMMIT TO DATABASE ✅✅✅
+        # ✅ CRITICAL: COMMIT
         request.env.cr.commit()
         
-        _logger.info('✅ Partner created and COMMITTED')
-        _logger.info('  🆔 New Partner ID: %s', partner.id)
-        
-        # ✅ RELOAD TO VERIFY
-        partner = Partner.browse(partner.id)
-        
-        _logger.info('✅ Partner reloaded for verification')
-        _logger.info('  👤 Name: %s', partner.name)
-        _logger.info('  📞 Phone: %s', partner.phone)
-        _logger.info('  🏷️ Tags: %s', partner.category_id.mapped('name'))
-        _logger.info('  👥 Type: %s', partner.company_type)
+        _logger.info('✅ Partner created: %s (ID: %s)', partner.name, partner.id)
         
         return partner
     
-    def _create_sale_order_with_verified_partner(self, conv, partner):
+    def _odoo_create_sale_order(self, partner_id, company_id, origin, note):
         """
-        ✅ TẠO SALE ORDER VỚI PARTNER ĐÃ VERIFIED
-        
-        Args:
-            conv: Conversation record
-            partner: res.partner (đã committed, đã verified)
+        ✅ TẠO SALE ORDER với partner_id
         
         Returns:
-            sale.order: Created sale order
+            sale.order: Sale order record
         """
-        _logger.info('🛒 Creating sale order...')
-        _logger.info('  👤 Using Partner ID: %s', partner.id)
-        _logger.info('  👤 Using Partner Name: %s', partner.name)
+        SaleOrder = request.env['sale.order'].sudo()
         
-        # ✅ PREPARE SALE ORDER VALUES
-        sale_vals = {
-            # ✅✅✅ CRITICAL: SET PARTNER_ID ✅✅✅
-            'partner_id': partner.id,
-            
-            'company_id': conv.company_id.id,
+        order_data = {
+            'partner_id': partner_id,  # ✅✅✅ QUAN TRỌNG NHẤT
+            'company_id': company_id,
             'date_order': fields.Datetime.now(),
-            'origin': 'Facebook Messenger - %s' % conv.facebook_user_id,
-            'note': (
-                'Đơn hàng từ Facebook Messenger Chatbot\n'
-                'PSID: %s\n'
-                'Khách hàng: %s\n'
-                'SĐT: %s'
-            ) % (
-                conv.facebook_user_id,
-                conv.customer_name,
-                conv.customer_phone
-            ),
+            'origin': origin,
+            'note': note,
         }
         
-        # Get salesperson if configured
+        # Get default salesperson
         default_user_id = request.env['ir.config_parameter'].sudo().get_param(
             'module_social_facebook.lead_default_user_id'
         )
         if default_user_id:
             try:
-                sale_vals['user_id'] = int(default_user_id)
+                order_data['user_id'] = int(default_user_id)
             except:
                 pass
         
-        _logger.info('  📝 Sale order values prepared:')
-        _logger.info('    - partner_id: %s', sale_vals['partner_id'])
-        _logger.info('    - company_id: %s', sale_vals['company_id'])
+        order = SaleOrder.create(order_data)
         
-        # ✅ CREATE SALE ORDER
-        sale_order = request.env['sale.order'].sudo().create(sale_vals)
-        
-        _logger.info('✅ Sale order created: %s', sale_order.name)
-        _logger.info('  🆔 Order ID: %s', sale_order.id)
-        _logger.info('  👤 Order Partner ID: %s', sale_order.partner_id.id)
-        _logger.info('  👤 Order Partner Name: %s', sale_order.partner_id.name)
-        
-        # ✅ ADD ORDER LINES
-        _logger.info('  📦 Adding products...')
-        
-        for idx, product in enumerate(conv.selected_product_ids, 1):
-            line_vals = {
-                'order_id': sale_order.id,
-                'product_id': product.product_id.id,
-                'product_uom_qty': 1,
-                'price_unit': product.price,
-            }
-            
-            line = request.env['sale.order.line'].sudo().create(line_vals)
-            
-            _logger.info('    %s. %s - %s đ', 
-                        idx,
-                        product.product_id.name, 
-                        product.price)
-        
-        # ✅ COMMIT ORDER + LINES
+        # ✅ COMMIT
         request.env.cr.commit()
         
-        _logger.info('✅ Order lines committed')
+        return order
+    
+    def _odoo_add_order_line(self, order_id, product_id, quantity, price):
+        """
+        ✅ THÊM ORDER LINE
+        """
+        OrderLine = request.env['sale.order.line'].sudo()
         
-        # ✅ ADD CHATTER NOTE
-        sale_order.message_post(
-            body=(
-                '🤖 Đơn hàng từ Facebook Messenger Chatbot\n\n'
-                '👤 Khách hàng: %s\n'
-                '📞 SĐT: %s\n'
-                '🆔 PSID: %s\n'
-                '🏷️ Tag: Facebook\n'
-                '👥 Loại: Person'
-            ) % (
-                partner.name,
-                partner.phone,
-                conv.facebook_user_id
-            ),
-            subject='Facebook Messenger Order',
-            message_type='comment',
-            subtype_xmlid='mail.mt_note'
-        )
+        line_data = {
+            'order_id': order_id,
+            'product_id': product_id,
+            'product_uom_qty': quantity,
+            'price_unit': price,
+        }
         
-        _logger.info('  📝 Total: %s đ', sale_order.amount_total)
+        line = OrderLine.create(line_data)
         
-        return sale_order
+        # ✅ COMMIT
+        request.env.cr.commit()
+        
+        return line
     
     def _get_or_create_facebook_tag(self):
         """Get or create Facebook tag"""
@@ -506,7 +393,7 @@ Cảm ơn bạn! 🙏""" % (
         tag = Tag.create({'name': 'Facebook', 'color': 1})
         request.env.cr.commit()
         
-        _logger.info('🆕 Created Facebook tag (ID: %s)', tag.id)
+        _logger.info('Created Facebook tag')
         
         return tag
     
@@ -522,8 +409,6 @@ Cảm ơn bạn! 🙏""" % (
         })
         
         request.env.cr.commit()
-        
-        _logger.info('  ✅ Added Facebook tag to partner: %s', partner.name)
     
     # =========================================================================
     # HELPER METHODS
