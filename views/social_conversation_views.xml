@@ -1,25 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Form View -->
+    <!-- ===================================================================== -->
+    <!-- LIST VIEW - NÂNG CẤP (Bỏ message_count, unread_count)                -->
+    <!-- ===================================================================== -->
+    <record id="social_conversation_view_list" model="ir.ui.view">
+        <field name="name">social.conversation.list</field>
+        <field name="model">social.conversation</field>
+        <field name="arch" type="xml">
+            <list string="Messenger Conversations">
+                <field name="customer_name"/>
+                <field name="account_id"/>
+                <field name="state" widget="badge" 
+                       decoration-success="state == 'resolved'"
+                       decoration-info="state == 'ongoing'"
+                       decoration-muted="state == 'closed'"/>
+                <field name="last_message_date"/>
+                <!-- ✅ THÊM: Cột Lead Amount -->
+                <field name="lead_amount" widget="monetary" 
+                       options="{'currency_field': 'currency_id'}"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ===================================================================== -->
+    <!-- FORM VIEW                                                             -->
+    <!-- ===================================================================== -->
     <record id="social_conversation_view_form" model="ir.ui.view">
         <field name="name">social.conversation.form</field>
         <field name="model">social.conversation</field>
         <field name="arch" type="xml">
             <form string="Messenger Conversation">
                 <header>
-                    <button name="action_create_lead" type="object" string="Create Lead" class="btn-primary" invisible="lead_id"/>
-                    <button name="action_mark_resolved" type="object" string="Mark Resolved" class="btn-success" invisible="state in ['resolved', 'closed']"/>
-                    <button name="action_close" type="object" string="Close" class="btn-secondary" invisible="state == 'closed'"/>
-                    <button name="action_reopen" type="object" string="Reopen" class="btn-warning" invisible="state != 'closed'"/>
-                    <field name="state" widget="statusbar" statusbar_visible="new,ongoing,resolved"/>
+                    <button name="action_mark_resolved" type="object" 
+                            string="Mark Resolved" class="btn-success" 
+                            invisible="state in ['resolved', 'closed']"/>
+                    <button name="action_close" type="object" 
+                            string="Close" class="btn-secondary" 
+                            invisible="state == 'closed'"/>
+                    <button name="action_reopen" type="object" 
+                            string="Reopen" class="btn-warning" 
+                            invisible="state != 'closed'"/>
+                    <field name="state" widget="statusbar" 
+                           statusbar_visible="new,ongoing,resolved"/>
                 </header>
                 <sheet>
-                    <div class="oe_button_box" name="button_box">
-                        <button name="action_view_messages" type="object" class="oe_stat_button" icon="fa-comments">
-                            <field name="message_count" widget="statinfo" string="Messages"/>
-                        </button>
-                    </div>
                     <group>
                         <group string="Customer Information">
                             <field name="customer_name"/>
@@ -31,6 +57,9 @@
                             <field name="account_id"/>
                             <field name="conversation_id"/>
                             <field name="lead_id"/>
+                            <!-- ✅ THÊM: Hiển thị số tiền -->
+                            <field name="lead_amount" widget="monetary"/>
+                            <field name="currency_id" invisible="1"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                     </group>
@@ -38,7 +67,6 @@
                         <group string="Tracking">
                             <field name="last_message_date"/>
                             <field name="last_message_from"/>
-                            <field name="unread_count"/>
                             <field name="first_response_time"/>
                         </group>
                         <group string="Status">
@@ -54,24 +82,9 @@
         </field>
     </record>
 
-    <!-- List View -->
-    <record id="social_conversation_view_list" model="ir.ui.view">
-        <field name="name">social.conversation.list</field>
-        <field name="model">social.conversation</field>
-        <field name="arch" type="xml">
-            <list string="Messenger Conversations">
-                <field name="customer_name"/>
-                <field name="account_id"/>
-                <field name="state"/>
-                <field name="message_count"/>
-                <field name="unread_count"/>
-                <field name="last_message_date"/>
-                <field name="lead_id"/>
-            </list>
-        </field>
-    </record>
-
-    <!-- Search View - SIMPLIFIED -->
+    <!-- ===================================================================== -->
+    <!-- SEARCH VIEW - SIMPLIFIED (Theo chuẩn repository gốc)                 -->
+    <!-- ===================================================================== -->
     <record id="social_conversation_view_search" model="ir.ui.view">
         <field name="name">social.conversation.search</field>
         <field name="model">social.conversation</field>
@@ -84,11 +97,21 @@
         </field>
     </record>
 
-    <!-- Action -->
+    <!-- ===================================================================== -->
+    <!-- ACTION                                                                -->
+    <!-- ===================================================================== -->
     <record id="action_social_conversation" model="ir.actions.act_window">
         <field name="name">Messenger Conversations</field>
         <field name="res_model">social.conversation</field>
         <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No conversations yet!
+            </p>
+            <p>
+                Conversations will appear here when customers message your Facebook page.
+            </p>
+        </field>
     </record>
 
 </odoo>
