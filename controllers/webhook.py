@@ -93,7 +93,7 @@ class FacebookWebhookController(http.Controller):
         
         if self._is_in_cooldown(conversation):
             self._send_text(conversation, 
-                "Cảm ơn bạn đã đặt hàng! Đơn hàng đang được xử lý.Đợi 15 giây để nhắn lại")
+                "Cảm ơn bạn đã đặt hàng! Đơn hàng đang được xử lý.Đợi 1 phút để nhắn lại")
             return
         
         current_state = conversation.chatbot_state or 'idle'
@@ -519,7 +519,7 @@ Cảm ơn bạn! 🙏""" % (
     
     def _set_cooldown(self, conv):
         try:
-            cooldown_until = datetime.now() + timedelta(seconds=15)
+            cooldown_until = datetime.now() + timedelta(minutes=1)
             conv.sudo().write({'cooldown_until': cooldown_until})
         except:
             pass
