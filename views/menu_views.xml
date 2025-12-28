@@ -88,11 +88,12 @@
               action="action_social_messenger_product"
               sequence="10"/>
 
+    <!-- ✅ FIX: ĐỔI ACTION REFERENCE -->
     <menuitem id="menu_messenger_orders"
-          name="Orders"
-          parent="menu_messenger_sales"
-          action="action_messenger_orders_from_sales"  
-          sequence="20"/>
+              name="Orders"
+              parent="menu_messenger_sales"
+              action="action_messenger_orders_from_sales"
+              sequence="20"/>
 
     <!-- ===================================================================== -->
     <!-- ANALYTICS                                                             -->
@@ -111,7 +112,6 @@
               parent="menu_social_marketing_root"
               sequence="100"/>
 
-    <!-- ✅ THÊM MỚI: Chatbot Automation submenu -->
     <menuitem id="menu_social_chatbot_automation"
               name="Chatbot Automation"
               parent="menu_social_configuration"

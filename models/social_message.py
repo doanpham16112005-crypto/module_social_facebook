@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 import logging
@@ -86,23 +84,13 @@ class SocialMessage(models.Model):
         ('idle', 'Idle'),
         ('ask_name', 'Asking Name'),
         ('ask_phone', 'Asking Phone'),
+        ('ask_address', 'Asking Address'),  # ✅ MỚI
         ('show_products', 'Showing Products'),
+        ('ask_quantity', 'Asking Quantity'),  # ✅ MỚI
         ('confirm_order', 'Confirming Order'),
         ('completed', 'Completed'),
     ], string='Chatbot State', default='idle', tracking=True, index=True)
-    # ✅ THÊM VÀO CUỐI PHẦN CHATBOT FIELDS (sau chatbot_state)
-
-    customer_address = fields.Char(
-        string='Customer Address',
-        tracking=True,
-        help='Địa chỉ giao hàng',
-    )
-
-    product_quantity = fields.Integer(
-        string='Product Quantity',
-        default=1,
-        help='Số lượng sản phẩm khách đặt',
-    )
+    
     customer_name = fields.Char(
         string='Customer Name',
         tracking=True,
@@ -113,6 +101,20 @@ class SocialMessage(models.Model):
         string='Customer Phone',
         tracking=True,
         help='Số điện thoại (đã chuẩn hóa về format 0XXXXXXXXX)',
+    )
+    
+    # ✅ THÊM VÀO CUỐI PHẦN CHATBOT FIELDS (sau chatbot_state)
+    
+    customer_address = fields.Char(
+        string='Customer Address',
+        tracking=True,
+        help='Địa chỉ giao hàng',
+    )
+    
+    product_quantity = fields.Integer(
+        string='Product Quantity',
+        default=1,
+        help='Số lượng sản phẩm khách đặt',
     )
     
     selected_product_ids = fields.Many2many(
