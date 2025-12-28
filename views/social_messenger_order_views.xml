@@ -2,168 +2,50 @@
 <odoo>
 
     <!-- ===================================================================== -->
-    <!-- MESSENGER ORDER - LIST VIEW                                           -->
+    <!-- MESSENGER ORDER - LIST VIEW (HIỂN THỊ ORDERS TỪ SALE.ORDER)           -->
     <!-- ===================================================================== -->
-    <record id="social_messenger_order_view_tree" model="ir.ui.view">
-        <field name="name">social.messenger.order.list</field>
-        <field name="model">social.messenger.order</field>
+    <record id="view_sale_order_messenger_tree" model="ir.ui.view">
+        <field name="name">sale.order.messenger.tree</field>
+        <field name="model">sale.order</field>
         <field name="arch" type="xml">
             <list string="Messenger Orders" 
                   decoration-success="state == 'sale'" 
-                  decoration-info="state == 'confirmed'"
-                  decoration-muted="state == 'cancelled'">
+                  decoration-info="state == 'draft'"
+                  decoration-muted="state == 'cancel'"
+                  create="false">
                 <field name="name"/>
-                <field name="order_date"/>
-                <field name="customer_name"/>
-                <field name="customer_phone"/>
-                <field name="total_amount" widget="monetary" options="{'currency_field': 'currency_id'}" sum="Total"/>
-                <field name="currency_id" column_invisible="1"/>
+                <field name="date_order"/>
+                <field name="partner_id"/>
+                <field name="amount_total" widget="monetary" sum="Total"/>
                 <field name="state" widget="badge" 
                        decoration-success="state == 'sale'"
-                       decoration-info="state == 'confirmed'"
-                       decoration-muted="state == 'cancelled'"/>
-                <field name="sale_order_id"/>
+                       decoration-info="state == 'draft'"
+                       decoration-warning="state == 'sent'"
+                       decoration-muted="state == 'cancel'"/>
                 <field name="user_id" widget="many2one_avatar_user"/>
                 <field name="company_id" groups="base.group_multi_company" column_invisible="1"/>
+                <field name="currency_id" column_invisible="1"/>
             </list>
         </field>
     </record>
 
     <!-- ===================================================================== -->
-    <!-- MESSENGER ORDER - FORM VIEW                                           -->
+    <!-- MESSENGER ORDER - ACTION (LẤY TỪ SALE.ORDER)                          -->
     <!-- ===================================================================== -->
-    <record id="social_messenger_order_view_form" model="ir.ui.view">
-        <field name="name">social.messenger.order.form</field>
-        <field name="model">social.messenger.order</field>
-        <field name="arch" type="xml">
-            <form string="Messenger Order">
-                <header>
-                    <button name="action_confirm" type="object" 
-                            string="Confirm" class="btn-primary"
-                            invisible="state != 'draft'"/>
-                    <button name="action_create_sale_order" type="object" 
-                            string="Create Sale Order" class="btn-primary"
-                            invisible="state != 'confirmed' or sale_order_id != False"/>
-                    <button name="action_view_sale_order" type="object" 
-                            string="View Sale Order" class="btn-info"
-                            invisible="sale_order_id == False"/>
-                    <button name="action_cancel" type="object" 
-                            string="Cancel"
-                            invisible="state in ['sale', 'cancelled']"/>
-                    <field name="state" widget="statusbar" 
-                           statusbar_visible="draft,confirmed,sale"/>
-                </header>
-                
-                <sheet>
-                    <div class="oe_title">
-                        <h1>
-                            <field name="name" readonly="1"/>
-                        </h1>
-                    </div>
-                    
-                    <group>
-                        <group string="Customer Information">
-                            <field name="customer_name"/>
-                            <field name="customer_phone"/>
-                            <field name="customer_email"/>
-                            <field name="facebook_user_id"/>
-                            <field name="partner_id" readonly="1"/>
-                        </group>
-                        <group string="Order Information">
-                            <field name="order_date"/>
-                            <field name="user_id"/>
-                            <field name="total_amount" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                            <field name="currency_id" column_invisible="1"/>
-                            <field name="sale_order_id" readonly="1"/>
-                            <field name="conversation_id"/>
-                        </group>
-                    </group>
-                    
-                    <notebook>
-                        <page string="Products" name="products">
-                            <field name="product_ids">
-                                <list>
-                                    <field name="product_id"/>
-                                    <field name="quick_reply_title"/>
-                                    <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                                    <field name="currency_id" column_invisible="1"/>
-                                </list>
-                            </field>
-                        </page>
-                        
-                        <page string="Internal Notes" name="notes">
-                            <field name="notes" placeholder="Add internal notes..."/>
-                        </page>
-                    </notebook>
-                </sheet>
-                
-                <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="activity_ids"/>
-                    <field name="message_ids"/>
-                </div>
-            </form>
-        </field>
-    </record>
-
-    <!-- ===================================================================== -->
-    <!-- MESSENGER ORDER - SEARCH VIEW                                         -->
-    <!-- ===================================================================== -->
-    <record id="social_messenger_order_view_search" model="ir.ui.view">
-        <field name="name">social.messenger.order.search</field>
-        <field name="model">social.messenger.order</field>
-        <field name="arch" type="xml">
-            <search string="Search Messenger Orders">
-                <field name="name"/>
-                <field name="customer_name"/>
-                <field name="customer_phone"/>
-                <field name="sale_order_id"/>
-                
-                <filter string="Draft" name="filter_draft" 
-                        domain="[('state', '=', 'draft')]"/>
-                <filter string="Confirmed" name="filter_confirmed" 
-                        domain="[('state', '=', 'confirmed')]"/>
-                <filter string="Sale Order Created" name="filter_sale" 
-                        domain="[('state', '=', 'sale')]"/>
-                <filter string="Cancelled" name="filter_cancelled" 
-                        domain="[('state', '=', 'cancelled')]"/>
-                <separator/>
-                
-                <filter string="My Orders" name="filter_my_orders" 
-                        domain="[('user_id', '=', uid)]"/>
-                <filter string="This Month" name="filter_this_month" 
-                        domain="[('order_date', '&gt;=', (context_today() - datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]"/>
-                <separator/>
-                
-                <filter string="Group By Salesperson" name="group_user" 
-                        context="{'group_by': 'user_id'}"/>
-                <filter string="Group By Status" name="group_state" 
-                        context="{'group_by': 'state'}"/>
-                <filter string="Group By Order Date" name="group_date" 
-                        context="{'group_by': 'order_date:month'}"/>
-                <filter string="Group By Company" name="group_company" 
-                        context="{'group_by': 'company_id'}" 
-                        groups="base.group_multi_company"/>
-            </search>
-        </field>
-    </record>
-
-    <!-- ===================================================================== -->
-    <!-- MESSENGER ORDER - ACTION                                              -->
-    <!-- ===================================================================== -->
-    <record id="action_social_messenger_order" model="ir.actions.act_window">
+    <record id="action_messenger_orders_from_sales" model="ir.actions.act_window">
         <field name="name">Messenger Orders</field>
-        <field name="res_model">social.messenger.order</field>
-        <field name="view_mode">list,form</field>
-        <field name="search_view_id" ref="social_messenger_order_view_search"/>
-        <field name="context">{'search_default_filter_confirmed': 1}</field>
+        <field name="res_model">sale.order</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_sale_order_messenger_tree"/>
+        <field name="domain">[('partner_id.category_id.name', 'ilike', 'Facebook-Messenger')]</field>
+        <field name="context">{}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 📦 No Messenger Orders Yet
             </p>
             <p>
-                Orders created through the Facebook Messenger chatbot will appear here.<br/>
-                Enable the chatbot in Settings to start receiving orders!
+                Orders from Facebook Messenger customers will appear here.<br/>
+                Customers with tag "Facebook-Messenger" are automatically tracked!
             </p>
         </field>
     </record>

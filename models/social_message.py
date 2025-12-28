@@ -90,7 +90,19 @@ class SocialMessage(models.Model):
         ('confirm_order', 'Confirming Order'),
         ('completed', 'Completed'),
     ], string='Chatbot State', default='idle', tracking=True, index=True)
-    
+    # ✅ THÊM VÀO CUỐI PHẦN CHATBOT FIELDS (sau chatbot_state)
+
+    customer_address = fields.Char(
+        string='Customer Address',
+        tracking=True,
+        help='Địa chỉ giao hàng',
+    )
+
+    product_quantity = fields.Integer(
+        string='Product Quantity',
+        default=1,
+        help='Số lượng sản phẩm khách đặt',
+    )
     customer_name = fields.Char(
         string='Customer Name',
         tracking=True,

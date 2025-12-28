@@ -89,10 +89,10 @@
               sequence="10"/>
 
     <menuitem id="menu_messenger_orders"
-              name="Orders"
-              parent="menu_messenger_sales"
-              action="action_social_messenger_order"
-              sequence="20"/>
+          name="Orders"
+          parent="menu_messenger_sales"
+          action="action_messenger_orders_from_sales"  
+          sequence="20"/>
 
     <!-- ===================================================================== -->
     <!-- ANALYTICS                                                             -->
