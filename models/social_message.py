@@ -164,3 +164,41 @@ class SocialMessage(models.Model):
          'UNIQUE(facebook_user_id, account_id)',
          'Conversation already exists for this user and page!'),
     ]
+    # =========================================================================
+# ACTION METHODS
+# =========================================================================
+
+    def action_reset_chatbot(self):
+        """
+        🔄 Reset chatbot về trạng thái ban đầu
+        
+        Button này giúp admin reset conversation khi:
+        - Chatbot bị stuck
+        - Cần test lại flow
+        - Khách hàng muốn bắt đầu lại
+        """
+        self.ensure_one()
+        
+        # Reset tất cả chatbot state
+        self.write({
+            'chatbot_state': 'idle',
+            'cooldown_until': False,
+            'selected_product_ids': [(5, 0, 0)],  # Clear products
+            'product_quantity': 0,
+            'customer_name': False,  # Optional: Clear thông tin nếu muốn reset hoàn toàn
+            'customer_phone': False,
+            'customer_address': False,
+        })
+        
+        _logger.info(f"🔄 Reset chatbot for PSID: {self.facebook_user_id}")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': '✅ Reset thành công',
+                'message': 'Chatbot đã được reset về trạng thái ban đầu. Khách hàng có thể bắt đầu order mới.',
+                'type': 'success',
+                'sticky': False,
+            }
+        }
