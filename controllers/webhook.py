@@ -56,9 +56,7 @@ class FacebookWebhookController(http.Controller):
                 self._process_messaging_event(event)
     
     def _process_messaging_event(self, event):
-        """
-        ✅ FIX CRITICAL: Reset state NGAY từ đầu
-        """
+        """Process incoming message"""
         sender_id = event.get('sender', {}).get('id')
         recipient_id = event.get('recipient', {}).get('id')
         
@@ -69,24 +67,18 @@ class FacebookWebhookController(http.Controller):
         if not msg:
             return
         
+        # Check cooldown
+        if msg.cooldown_until:
+            now = fields.Datetime.now()
+            if msg.cooldown_until > now:
+                _logger.info(f"⏳ Cooldown active until {msg.cooldown_until}")
+                return
+        
         if 'message' in event:
             message_data = event['message']
             
             if message_data.get('is_echo'):
                 return
-            
-            # ✅ FIX CRITICAL: Reset state completed TRƯỚC KHI xử lý
-            if msg.chatbot_state == 'completed':
-                msg.sudo().write({
-                    'chatbot_state': 'idle',
-                    'cooldown_until': False,
-                    'selected_product_ids': [(5, 0, 0)],
-                    'product_quantity': 0,
-                    'customer_name': False,
-                    'customer_phone': False,
-                    'customer_address': False,
-                })
-                _logger.info(f"✅ Reset completed → idle for PSID: {sender_id}")
             
             # Process message
             if 'quick_reply' in message_data:
@@ -120,11 +112,14 @@ class FacebookWebhookController(http.Controller):
                 'company_id': account.company_id.id,
                 'chatbot_state': 'idle',
             })
-        except:
+        except Exception as e:
+            _logger.error(f"Failed to create message record: {e}")
             return None
     
     def _find_existing_customer(self, psid):
-        """Tìm customer có 2 tag"""
+        """
+        ✅ YÊU CẦU 1 - TIÊU CHÍ 1: Tìm customer có 2 tag
+        """
         try:
             Partner = request.env['res.partner'].sudo()
             Tag = request.env['res.partner.category'].sudo()
@@ -146,10 +141,12 @@ class FacebookWebhookController(http.Controller):
                     return partner
             
             return None
-        except:
+        except Exception as e:
+            _logger.error(f"Error finding customer: {e}")
             return None
     
     def _get_or_create_psid_tag(self, psid):
+        """✅ YÊU CẦU 1: Tạo/lấy PSID tag"""
         Tag = request.env['res.partner.category'].sudo()
         tag = Tag.search([('name', '=', f"facebook_psid:{psid}")], limit=1)
         if not tag:
@@ -157,11 +154,37 @@ class FacebookWebhookController(http.Controller):
         return tag
     
     def _get_or_create_fb_messenger_tag(self):
+        """✅ YÊU CẦU 1: Tạo/lấy FB Messenger tag"""
         Tag = request.env['res.partner.category'].sudo()
         tag = Tag.search([('name', '=ilike', 'Facebook-Messenger')], limit=1)
         if not tag:
             tag = Tag.create({'name': 'Facebook-Messenger', 'color': 4})
         return tag
+    
+    def _reset_order_flow(self, msg, kick_start=False, set_cooldown=False):
+        """
+        ✅ RESET ORDER FLOW - XÓA HOÀN TOÀN DỮ LIỆU CŨ
+        """
+        write_vals = {
+            'chatbot_state': 'idle',
+            'cooldown_until': False,
+            'selected_product_ids': [(5, 0, 0)],
+            'product_quantity': 0,
+            # ✅ XÓA LUÔN THÔNG TIN KHÁCH HÀNG ĐỂ BẮT ĐẦU LẠI
+            'customer_name': False,
+            'customer_phone': False,
+            'customer_address': False,
+        }
+        
+        if set_cooldown:
+            write_vals['cooldown_until'] = fields.Datetime.now() + timedelta(seconds=3)
+        
+        msg.sudo().write(write_vals)
+        
+        _logger.info(f"🔄 Reset order flow (full clean) for PSID: {msg.facebook_user_id}")
+        
+        if kick_start:
+            self._state_idle(msg, 'mua')
     
     def _process_chatbot_flow(self, msg, user_message):
         """Process chatbot flow"""
@@ -174,7 +197,6 @@ class FacebookWebhookController(http.Controller):
         
         state = msg.chatbot_state or 'idle'
         
-        # ✅ FIX: Không còn state completed nữa - đã reset ở trên
         if state == 'idle':
             self._state_idle(msg, user_message)
         elif state == 'ask_update':
@@ -193,13 +215,24 @@ class FacebookWebhookController(http.Controller):
             self._state_confirm_order(msg, user_message)
     
     def _state_idle(self, msg, text):
-        """State: idle"""
+        """
+        ✅ YÊU CẦU 1 - TIÊU CHÍ 1: State idle với logic kiểm tra customer
+        """
         text_lower = text.lower().strip()
         
+        # Xử lý PRODUCT payload
+        if text.startswith('PRODUCT_'):
+            _logger.info(f"📦 Product payload in idle: {text}")
+            msg.sudo().write({'chatbot_state': 'show_products'})
+            self._state_show_products(msg, text)
+            return
+        
         if any(kw in text_lower for kw in ['mua', 'order', 'buy', 'menu', 'sản phẩm']):
+            # ✅ KIỂM TRA CUSTOMER CÓ 2 TAG
             customer = self._find_existing_customer(msg.facebook_user_id)
             
             if customer:
+                # ✅ ĐÃ CÓ CUSTOMER → HỎI CẬP NHẬT
                 msg.sudo().write({
                     'chatbot_state': 'ask_update',
                     'customer_name': customer.name,
@@ -216,6 +249,7 @@ Bạn có muốn cập nhật thông tin không?
 👉 Gửi "Có" để cập nhật
 👉 Gửi "Không" để tiếp tục mua hàng""")
             else:
+                # ✅ CHƯA CÓ CUSTOMER → HỎI TỪ ĐẦU
                 msg.sudo().write({'chatbot_state': 'ask_name'})
                 
                 welcome_msg = request.env['ir.config_parameter'].sudo().get_param(
@@ -231,6 +265,11 @@ Bạn có muốn cập nhật thông tin không?
         """State: ask_update"""
         text_lower = text.lower().strip()
         
+        if any(kw in text_lower for kw in ['mua', 'menu', 'order']):
+            msg.sudo().write({'chatbot_state': 'idle'})
+            self._state_idle(msg, text)
+            return
+        
         if any(kw in text_lower for kw in ['có', 'yes', 'ok', 'update', 'cập nhật']):
             msg.sudo().write({'chatbot_state': 'ask_name'})
             self._send_text(msg, "Bạn muốn cập nhật tên mới?\n(hoặc gửi '.' để giữ nguyên)")
@@ -242,6 +281,13 @@ Bạn có muốn cập nhật thông tin không?
     
     def _state_ask_name(self, msg, text):
         """State: ask_name"""
+        text_lower = text.lower().strip()
+        
+        if any(kw in text_lower for kw in ['mua', 'menu', 'order']):
+            msg.sudo().write({'chatbot_state': 'idle'})
+            self._state_idle(msg, text)
+            return
+        
         name = text.strip()
         
         if name == '.':
@@ -268,6 +314,13 @@ Bạn có muốn cập nhật thông tin không?
     
     def _state_ask_phone(self, msg, text):
         """State: ask_phone"""
+        text_lower = text.lower().strip()
+        
+        if any(kw in text_lower for kw in ['mua', 'menu', 'order']):
+            msg.sudo().write({'chatbot_state': 'idle'})
+            self._state_idle(msg, text)
+            return
+        
         phone = text.strip()
         
         if phone == '.':
@@ -299,6 +352,13 @@ Bạn có muốn cập nhật thông tin không?
     
     def _state_ask_address(self, msg, text):
         """State: ask_address"""
+        text_lower = text.lower().strip()
+        
+        if any(kw in text_lower for kw in ['mua', 'menu', 'order']):
+            msg.sudo().write({'chatbot_state': 'idle'})
+            self._state_idle(msg, text)
+            return
+        
         address = text.strip()
         
         if address == '.':
@@ -324,6 +384,13 @@ Bạn có muốn cập nhật thông tin không?
     
     def _state_show_products(self, msg, text):
         """State: show_products"""
+        text_lower = text.lower().strip()
+        
+        if any(kw in text_lower for kw in ['mua', 'menu', 'order']):
+            msg.sudo().write({'chatbot_state': 'idle'})
+            self._state_idle(msg, text)
+            return
+        
         if text.startswith('PRODUCT_'):
             product_id = self._extract_product_id(text)
             if product_id:
@@ -331,6 +398,20 @@ Bạn có muốn cập nhật thông tin không?
     
     def _state_ask_quantity(self, msg, text):
         """State: ask_quantity"""
+        text_lower = text.lower().strip()
+        
+        if any(kw in text_lower for kw in ['mua', 'menu', 'order']):
+            msg.sudo().write({'chatbot_state': 'idle'})
+            self._state_idle(msg, text)
+            return
+        
+        if not msg.selected_product_ids:
+            _logger.warning(f"⚠️ No product selected for PSID: {msg.facebook_user_id}")
+            self._send_text(msg, "❌ Vui lòng chọn lại sản phẩm.")
+            msg.sudo().write({'chatbot_state': 'show_products'})
+            self._send_product_list(msg)
+            return
+        
         try:
             quantity = int(text.strip())
             
@@ -367,10 +448,15 @@ Xác nhận đặt hàng?
             
         except ValueError:
             self._send_text(msg, "❌ Vui lòng nhập số lượng hợp lệ (ví dụ: 1, 2, 5...)")
+        except Exception as e:
+            _logger.error(f"Error in ask_quantity: {e}", exc_info=True)
+            self._send_text(msg, "❌ Có lỗi xảy ra. Vui lòng chọn lại sản phẩm.")
+            msg.sudo().write({'chatbot_state': 'show_products'})
+            self._send_product_list(msg)
     
     def _state_confirm_order(self, msg, text):
         """
-        ✅ FIX CRITICAL: Reset về idle SAU KHI order thành công
+        ✅ State confirm order - Sau khi order xong reset hoàn toàn
         """
         text_lower = text.lower().strip()
         
@@ -384,6 +470,9 @@ Xác nhận đặt hàng?
                 partner = self._find_or_create_partner_with_tags(msg)
                 order = self._create_sale_order(msg, partner)
                 lead = self._create_or_update_crm_lead(msg, partner, order)
+                
+                # ✅ YÊU CẦU 3: Sync to conversation
+                self._sync_to_conversation(msg, partner, lead)
                 
                 self._send_text(msg, f"""🎉 Đặt hàng thành công!
 
@@ -400,19 +489,14 @@ Cảm ơn bạn! 🙏
 
 👉 Gửi "mua" để tiếp tục đặt hàng""")
                 
-                # ✅ FIX CRITICAL: Reset HOÀN TOÀN về idle
-                msg.sudo().write({
-                    'chatbot_state': 'idle',
-                    'cooldown_until': False,
-                    'selected_product_ids': [(5, 0, 0)],
-                    'product_quantity': 0,
-                })
+                # ✅ RESET HOÀN TOÀN - XÓA HẾT DỮ LIỆU CŨ
+                self._reset_order_flow(msg, kick_start=False, set_cooldown=True)
                 
-                _logger.info(f"✅ Order success - Reset to idle for PSID: {msg.facebook_user_id}")
+                _logger.info(f"✅ Order {order.name} completed - Full reset for PSID: {msg.facebook_user_id}")
                 
             except Exception as e:
-                _logger.error(f'Order failed: {e}')
-                msg.sudo().write({'chatbot_state': 'idle'})
+                _logger.error(f'Order failed: {e}', exc_info=True)
+                self._reset_order_flow(msg, kick_start=False, set_cooldown=False)
                 self._send_text(msg, "❌ Có lỗi xảy ra khi tạo đơn hàng. Vui lòng thử lại!")
         
         elif any(kw in text_lower for kw in ['không', 'no', 'hủy']):
@@ -427,12 +511,15 @@ Cảm ơn bạn! 🙏
             self._send_text(msg, '❓ Vui lòng gửi "Có" hoặc "Không"')
     
     def _find_or_create_partner_with_tags(self, msg):
-        """Tạo/cập nhật partner"""
+        """
+        ✅ YÊU CẦU 1 - TIÊU CHÍ 1: Tạo/cập nhật partner với 2 tags
+        """
         Partner = request.env['res.partner'].with_context(tracking_disable=True).sudo()
         
         existing = self._find_existing_customer(msg.facebook_user_id)
         
         if existing:
+            # CẬP NHẬT THÔNG TIN NẾU CÓ THAY ĐỔI
             update_vals = {}
             if msg.customer_name and existing.name != msg.customer_name:
                 update_vals['name'] = msg.customer_name
@@ -446,6 +533,7 @@ Cảm ơn bạn! 🙏
             
             return existing
         else:
+            # TẠO MỚI VỚI 2 TAGS
             fb_tag = self._get_or_create_fb_messenger_tag()
             psid_tag = self._get_or_create_psid_tag(msg.facebook_user_id)
             
@@ -480,11 +568,14 @@ Cảm ơn bạn! 🙏
         return order
     
     def _create_or_update_crm_lead(self, msg, partner, order):
-        """Tạo/cập nhật CRM Lead"""
+        """
+        ✅ YÊU CẦU 1 - TIÊU CHÍ 2: Tạo/cập nhật CRM Lead với 2 tags
+        """
         try:
             Lead = request.env['crm.lead'].with_context(tracking_disable=True).sudo()
             LeadTag = request.env['crm.tag'].sudo()
             
+            # Tạo/lấy 2 tags
             fb_tag = LeadTag.search([('name', '=ilike', 'Facebook-Messenger')], limit=1)
             if not fb_tag:
                 fb_tag = LeadTag.create({'name': 'Facebook-Messenger', 'color': 4})
@@ -493,12 +584,14 @@ Cảm ơn bạn! 🙏
             if not psid_tag:
                 psid_tag = LeadTag.create({'name': f"facebook_psid:{msg.facebook_user_id}", 'color': 5})
             
+            # Tìm lead cũ
             existing_lead = Lead.search([
                 ('tag_ids', 'in', [psid_tag.id]),
                 ('partner_id', '=', partner.id),
             ], limit=1)
             
             if existing_lead:
+                # ✅ CẬP NHẬT CỘNG DỒN
                 old_revenue = existing_lead.expected_revenue or 0
                 new_revenue = old_revenue + order.amount_total
                 
@@ -520,6 +613,7 @@ Cảm ơn bạn! 🙏
                 msg.sudo().write({'lead_id': existing_lead.id})
                 return existing_lead
             else:
+                # ✅ TẠO MỚI VỚI 2 TAGS
                 lead = Lead.create({
                     'name': f'FB Lead - {partner.name}',
                     'type': 'opportunity',
@@ -551,8 +645,46 @@ Cảm ơn bạn! 🙏
                 
                 msg.sudo().write({'lead_id': lead.id})
                 return lead
-        except:
+        except Exception as e:
+            _logger.error(f"Error creating/updating lead: {e}", exc_info=True)
             return None
+    
+    def _sync_to_conversation(self, msg, partner, lead):
+        """
+        ✅ YÊU CẦU 2 & 3: Sync to social.conversation
+        """
+        try:
+            Conversation = request.env['social.conversation'].sudo()
+            
+            # Tìm conversation cũ
+            existing = Conversation.search([
+                ('facebook_psid', '=', msg.facebook_user_id),
+                ('account_id', '=', msg.account_id.id),
+            ], limit=1)
+            
+            conv_vals = {
+                'customer_name': partner.name,
+                'customer_phone': partner.phone,
+                'last_message_date': fields.Datetime.now(),
+                'state': 'ongoing',
+                'lead_id': lead.id if lead else False,
+            }
+            
+            if existing:
+                # CẬP NHẬT
+                existing.write(conv_vals)
+            else:
+                # TẠO MỚI
+                next_id = Conversation.search_count([]) + 1
+                conv_vals.update({
+                    'facebook_psid': msg.facebook_user_id,
+                    'account_id': msg.account_id.id,
+                    'company_id': msg.company_id.id,
+                    'conversation_id': f"CONV-{next_id:05d}",
+                })
+                Conversation.create(conv_vals)
+        except Exception as e:
+            _logger.error(f"Error syncing conversation: {e}", exc_info=True)
     
     def _handle_product_selection(self, msg, product_id):
         """Handle product selection"""
@@ -574,8 +706,8 @@ Cảm ơn bạn! 🙏
 
 🔢 Bạn muốn mua bao nhiêu?
 👉 Vui lòng nhập số lượng (VD: 1, 2, 5...)""")
-        except:
-            pass
+        except Exception as e:
+            _logger.error(f"Error handling product selection: {e}", exc_info=True)
     
     def _send_text(self, msg, text):
         """Send text message"""
@@ -591,8 +723,8 @@ Cảm ơn bạn! 🙏
         
         try:
             requests.post(url, json=payload, params=params, timeout=10)
-        except:
-            pass
+        except Exception as e:
+            _logger.error(f"Error sending message: {e}")
     
     def _send_product_list(self, msg):
         """Send product list"""
@@ -636,8 +768,8 @@ Cảm ơn bạn! 🙏
         
         try:
             requests.post(url, json=payload, params=params, timeout=10)
-        except:
-            pass
+        except Exception as e:
+            _logger.error(f"Error sending product list: {e}")
     
     def _validate_order_data(self, msg):
         """Validate order data"""
@@ -663,5 +795,6 @@ Cảm ơn bạn! 🙏
         """Extract product ID"""
         try:
             return int(payload.replace('PRODUCT_', ''))
-        except:
+        except Exception as e:
+            _logger.error(f"Error extracting product ID: {e}")
             return None
